@@ -24,6 +24,25 @@ export const isTailMessage = (messagesForChat: Message[], index: number): boolea
     return diffMs > sixtyMinutes;
 };
 
+export const formatDayLabel = (date: Date): string => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isSameDay = (a: Date, b: Date) =>
+        a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+    if (isSameDay(date, now)) return "Today";
+    if (isSameDay(date, yesterday)) return "Yesterday";
+
+    return date.toLocaleDateString([], {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+    });
+};
+
 export const formatDate = (date: Date): string => {
     const now = new Date();
     const isSameDay =

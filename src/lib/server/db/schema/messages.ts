@@ -79,6 +79,7 @@ export const messagesRelations = relations(messages, ({ one, many }) => ({
         fields: [messages.author],
         references: [users.id],
     }),
+    reactions: many(messagesReactions),
 }));
 
 export const messagesReadReceipts = pgTable("message_read_receipts", {
@@ -103,5 +104,26 @@ export const messagesReadReceiptsRelations = relations(messagesReadReceipts, ({ 
     chat: one(chats, {
         fields: [messagesReadReceipts.chatId],
         references: [chats.id],
+    }),
+}));
+
+export const messagesReactions = pgTable("message_reactions", {
+    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id),
+    userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+    emoji: varchar("emoji", { length: 64 }).notNull(),
+}, (table) => [
+    primaryKey({ columns: [table.messageId, table.userId] }),
+    index("message_reactions_user_idx").on(table.userId),
+    index("message_reactions_message_idx").on(table.messageId),
+]);
+
+export const messagesReactionsRelations = relations(messagesReactions, ({ one }) => ({
+    message: one(messages, {
+        fields: [messagesReactions.messageId],
+        references: [messages.id],
+    }),
+    user: one(users, {
+        fields: [messagesReactions.userId],
+        references: [users.id],
     }),
 }));

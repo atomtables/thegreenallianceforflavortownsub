@@ -30,6 +30,8 @@ export interface Message {
     deleted?: boolean;
     // attachments (array of attachment IDs)
     attachments?: string[];
+    // reactions (map of userId to emoji)
+    reactions: {[userId: string]: string};
 }
 
 export interface Chat {
@@ -41,9 +43,9 @@ export interface Chat {
     archived?: boolean;
     participantIds: string[];
     // last message in the chat (if any)
-    lastMessage: Message;
+    lastMessage?: Message;
     readReceipts: {
-        messageId: string;
+        messageId: string | null;
         count: number;
     };
 }
@@ -65,16 +67,17 @@ export function normaliseChatFromDatabase(res: {
         name: res.name ?? undefined,
         archived: res.archived,
         participantIds: participantIds,
-        lastMessage: res.lastMessage ? normaliseMessageFromDatabase(res.lastMessage as typeof table.messages.$inferSelect) : null,
+        lastMessage: res.lastMessage ? normaliseMessageFromDatabase(res.lastMessage as any) : undefined,
         readReceipts: {
             messageId: res.readReceipts?.[0]?.messageId || null,
-            count: res.readCount || null,
+            count: res.readCount || 0,
         },
     };
     return chatData;
 }
 
-export function normaliseMessageFromDatabase(res: typeof table.messages.$inferSelect): Message {
+export function normaliseMessageFromDatabase(res: typeof table.messages.$inferSelect & { reactions?: (typeof table.messagesReactions.$inferSelect)[] }): Message {
+    console.log("reactions", res.reactions);
     const messageData: Message = {
         id: res.id,
         author: res.author,
@@ -82,6 +85,10 @@ export function normaliseMessageFromDatabase(res: typeof table.messages.$inferSe
         chatId: res.chatId,
         edited: res.edited,
         attachments: res.attachments,
+        reactions: res.reactions?.reduce?.((acc, reaction) => {
+            acc[reaction.userId] = reaction.emoji;
+            return acc;
+        }, {} as {[userId: string]: string}) || {},
     };
     return messageData;
 }
