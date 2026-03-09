@@ -239,6 +239,7 @@
                 if (document.hasFocus()) {
                     let chat = currentlySelectedChat;
                     let message = messages[currentlySelectedChatId]?.findLast((v) => v);
+                    if (!message) return;
                     chat!.readReceipts.count = 0;
                     chat!.readReceipts.messageId = message.id;
                     fetch(`/api/messages/${currentlySelectedChatId}?messageId=${message.id}`, {

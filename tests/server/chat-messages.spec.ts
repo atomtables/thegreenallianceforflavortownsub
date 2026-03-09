@@ -3,7 +3,8 @@ import { signin } from './util';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { eq, and, inArray, desc } from 'drizzle-orm';
-import { chats, chatParticipants, messages, users } from '../../src/lib/server/db/schema';
+import { chats, chatParticipants, messages, messagesReactions, users } from '../../src/lib/server/db/schema';
+import type { Message } from '$lib/types/messages';
 
 /**
  * Database connection for direct verification of data.
@@ -95,7 +96,6 @@ async function sendMessage(
 ): Promise<any> {
     return request.post(`/api/messages/${chatId}`, {
         multipart: {
-            chatId: chatId,
             content: content
         }
     });
@@ -116,6 +116,22 @@ async function editMessage(
             content: newContent
         }
     });
+}
+
+/**
+ * Helper to react to a message via PUT /api/messages/[chatId]
+ */
+async function reactToMessage(
+    request: any,
+    chatId: string,
+    messageId: string,
+    emoji: string,
+    action?: string
+): Promise<any> {
+    const multipart: Record<string, string> = { messageId };
+    if (emoji) multipart.emoji = emoji;
+    if (action) multipart.action = action;
+    return request.put(`/api/messages/${chatId}`, { multipart });
 }
 
 /**
@@ -246,7 +262,6 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
             const chatId = testChatId || 'test-chat-id';
             const response = await request.post(`/api/messages/${chatId}`, {
                 multipart: {
-                    chatId: chatId,
                     content: "Test message"
                 }
             });
@@ -285,36 +300,7 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
     // ==================== INPUT VALIDATION TESTS ====================
 
     test.describe("Input validation", () => {
-
-        test("POST: returns 400 when chatId is missing", async ({ request }) => {
-            await signin(request);
-
-            const response = await request.post(`/api/messages/${testChatId}`, {
-                multipart: {
-                    content: "Test message"
-                }
-            });
-
-            expect(response.status()).toBe(400);
-            const body = await response.json();
-            expect(body.error).toBeDefined();
-        });
-
         test("POST: returns 400 when content is missing", async ({ request }) => {
-            await signin(request);
-
-            const response = await request.post(`/api/messages/${testChatId}`, {
-                multipart: {
-                    chatId: testChatId
-                }
-            });
-
-            expect(response.status()).toBe(400);
-            const body = await response.json();
-            expect(body.error).toBeDefined();
-        });
-
-        test("POST: returns 400 when both chatId and content are missing", async ({ request }) => {
             await signin(request);
 
             const response = await request.post(`/api/messages/${testChatId}`, {
@@ -366,18 +352,10 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
             expect(body.error).toBeDefined();
         });
 
-        test("HEAD: returns 400 when 'before' message ID is missing", async ({ request }) => {
+        test("HEAD: returns 400 when messageId is missing", async ({ request }) => {
             await signin(request);
 
-            const response = await request.head(`/api/messages/${testChatId}?sessionId=test`);
-
-            expect(response.status()).toBe(400);
-        });
-
-        test("HEAD: returns 400 when sessionId is invalid or missing", async ({ request }) => {
-            await signin(request);
-
-            const response = await request.head(`/api/messages/${testChatId}?before=123`);
+            const response = await request.head(`/api/messages/${testChatId}`);
 
             expect(response.status()).toBe(400);
         });
@@ -586,7 +564,7 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
             // Create a message
             const content1 = "First version";
             const sendResponse = await sendMessage(request, testChatId, content1);
-            const messageId = sendResponse.json().then(b => b.message.id);
+            const messageId = sendResponse.json().then((b: { message: Message; }) => b.message.id);
             const resolvedMessageId = await messageId;
             createdMessageIds.push(resolvedMessageId);
 
@@ -754,35 +732,33 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
 
     });
 
-    // ==================== MESSAGE RETRIEVAL TESTS (GET/SSE) ====================
+    // ==================== SSE STREAM TESTS (GET /api/messages/stream) ====================
 
-    test.describe("Message retrieval via SSE (GET)", () => {
+    test.describe("SSE stream (/api/messages/stream)", () => {
 
-        test("SSE connection opens successfully for authorized user and receives session event", async ({ page, request }) => {
-            // First, sign in via the page to establish browser cookies
+        test("SSE connection opens and receives session event with a valid session ID", async ({ page }) => {
+            // Sign in via the page to establish browser cookies
             await page.goto('/account/signin');
             await page.fill('#username', process.env.MOD_USER!);
             await page.fill('#password', process.env.MOD_PASS!);
             await page.click('button[type="submit"]');
-            
-            // Wait for navigation after signin
             await page.waitForURL(/.*(?<!signin)$/);
 
-            // Now use EventSource in the browser context to test SSE
-            const sseResult = await page.evaluate(async (chatId) => {
+            // Connect to the SSE stream and listen for the session event
+            const sseResult = await page.evaluate(() => {
                 return new Promise<{ success: boolean; sessionId?: string; error?: string }>((resolve) => {
                     const timeoutId = setTimeout(() => {
                         source.close();
-                        resolve({ success: false, error: 'Timeout waiting for SSE events' });
+                        resolve({ success: false, error: 'Timeout waiting for session event' });
                     }, 10000);
 
-                    const source = new EventSource(`/api/messages/${chatId}`);
-                    
+                    const source = new EventSource('/api/messages/stream');
+
                     source.addEventListener('session', (event) => {
                         clearTimeout(timeoutId);
-                        const data = JSON.parse(event.data);
                         source.close();
-                        resolve({ success: true, sessionId: data.sessionId });
+                        // The session event data is the sessionId string directly
+                        resolve({ success: true, sessionId: event.data });
                     });
 
                     source.onerror = () => {
@@ -791,101 +767,171 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
                         resolve({ success: false, error: 'SSE connection error' });
                     };
                 });
-            }, testChatId);
+            });
 
             expect(sseResult.success).toBe(true);
             expect(sseResult.sessionId).toBeDefined();
             expect(typeof sseResult.sessionId).toBe('string');
+            // sessionId should be a valid UUID
+            expect(sseResult.sessionId).toMatch(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            );
         });
 
-        test("SSE connection receives messages from chat history", async ({ page, request }) => {
-            // First send a message so there's something in the chat
-            await signin(request);
-            const testContent = `SSE test message ${Date.now()}`;
-            const sendResponse = await sendMessage(request, testChatId, testContent);
-            expect(sendResponse.status()).toBe(201);
-            const sentMessageId = (await sendResponse.json()).message.id;
-            createdMessageIds.push(sentMessageId);
+        test("SSE stream returns 401 for unauthenticated request", async ({ page }) => {
+            // Navigate without signing in
+            await page.goto('/');
 
-            // Sign in via the page
+            const result = await page.evaluate(async () => {
+                const response = await fetch('/api/messages/stream', {
+                    headers: { 'Accept': 'text/event-stream' }
+                });
+                return { status: response.status };
+            });
+
+            expect(result.status).toBe(401);
+        });
+
+        test("SSE stream delivers real-time message events from another user", async ({ page, request, browser }) => {
+            // Sign in the mod user via the page for SSE
             await page.goto('/account/signin');
             await page.fill('#username', process.env.MOD_USER!);
             await page.fill('#password', process.env.MOD_PASS!);
             await page.click('button[type="submit"]');
             await page.waitForURL(/.*(?<!signin)$/);
 
-            // Connect to SSE and collect messages
-            const sseResult = await page.evaluate(async ({ chatId, expectedContent }) => {
-                return new Promise<{ success: boolean; messages: any[]; error?: string }>((resolve) => {
-                    const messages: any[] = [];
-                    let sessionReceived = false;
+            const testContent = `SSE realtime test ${Date.now()}`;
 
+            // Open an SSE connection and wait for a message event
+            const ssePromise = page.evaluate((expectedContent) => {
+                return new Promise<{ success: boolean; message?: any; error?: string }>((resolve) => {
                     const timeoutId = setTimeout(() => {
                         source.close();
-                        resolve({ success: sessionReceived, messages, error: 'Timeout' });
-                    }, 10000);
+                        resolve({ success: false, error: 'Timeout waiting for message event' });
+                    }, 15000);
 
-                    const source = new EventSource(`/api/messages/${chatId}`);
-                    
+                    const source = new EventSource('/api/messages/stream');
+
                     source.addEventListener('session', () => {
-                        sessionReceived = true;
+                        // Session established — now the server is ready to push events
+                        // The caller will send a message from a different user after a short delay
                     });
 
                     source.addEventListener('message', (event) => {
                         const data = JSON.parse(event.data);
-                        messages.push(data.message);
-                        
-                        // Check if we received our test message
-                        if (data.message.content === expectedContent) {
+                        if (data.message?.content === expectedContent) {
                             clearTimeout(timeoutId);
                             source.close();
-                            resolve({ success: true, messages });
+                            resolve({ success: true, message: data.message });
                         }
                     });
 
                     source.onerror = () => {
                         clearTimeout(timeoutId);
                         source.close();
-                        resolve({ success: false, messages, error: 'SSE connection error' });
+                        resolve({ success: false, error: 'SSE connection error' });
                     };
                 });
-            }, { chatId: testChatId, expectedContent: testContent });
+            }, testContent);
+
+            // Give the SSE connection a moment to establish
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Send a message as the regular user (different from the SSE-connected mod user)
+            await signin(request, process.env.REG_USER, process.env.REG_PASS);
+            const sendResponse = await sendMessage(request, testChatId, testContent);
+            expect(sendResponse.status()).toBe(201);
+            const sentBody = await sendResponse.json();
+            createdMessageIds.push(sentBody.message.id);
+
+            // Wait for the SSE to receive the event
+            const sseResult = await ssePromise;
 
             expect(sseResult.success).toBe(true);
-            expect(sseResult.messages.length).toBeGreaterThan(0);
-            
-            // Verify our test message was received
-            const receivedMessage = sseResult.messages.find(m => m.content === testContent);
-            expect(receivedMessage).toBeDefined();
-            expect(receivedMessage.chatId).toBe(testChatId);
+            expect(sseResult.message).toBeDefined();
+            expect(sseResult.message.content).toBe(testContent);
+            expect(sseResult.message.chatId).toBe(testChatId);
+            expect(sseResult.message.author).toBe(regUserId);
         });
 
-        test("SSE returns 401 for unauthenticated request", async ({ page }) => {
-            // Go to a page without signing in
-            await page.goto('/');
+    });
 
-            // Try to connect to SSE endpoint without authentication
-            const sseResult = await page.evaluate(async (chatId) => {
-                return new Promise<{ success: boolean; status?: number; error?: string }>((resolve) => {
-                    const timeoutId = setTimeout(() => {
-                        resolve({ success: false, error: 'Timeout' });
-                    }, 5000);
+    // ==================== MESSAGE HISTORY RETRIEVAL TESTS (GET /api/messages/[chatId]) ====================
 
-                    // Use fetch to check the initial response status
-                    fetch(`/api/messages/${chatId}`, {
-                        headers: { 'Accept': 'text/event-stream' }
-                    }).then(response => {
-                        clearTimeout(timeoutId);
-                        resolve({ success: response.status === 401, status: response.status });
-                    }).catch(err => {
-                        clearTimeout(timeoutId);
-                        resolve({ success: false, error: err.message });
-                    });
-                });
-            }, testChatId || 'test-chat-id');
+    test.describe("Message history retrieval (GET)", () => {
 
-            expect(sseResult.success).toBe(true);
-            expect(sseResult.status).toBe(401);
+        test("returns latest messages for a chat", async ({ request }) => {
+            await signin(request);
+
+            // Send a known message first
+            const testContent = `History test ${Date.now()}`;
+            const sendResponse = await sendMessage(request, testChatId, testContent);
+            expect(sendResponse.status()).toBe(201);
+            const sentMessage = (await sendResponse.json()).message;
+            createdMessageIds.push(sentMessage.id);
+
+            // Fetch chat history
+            const response = await request.get(`/api/messages/${testChatId}`);
+            expect(response.status()).toBe(200);
+
+            const history = await response.json();
+            expect(Array.isArray(history)).toBe(true);
+            expect(history.length).toBeGreaterThan(0);
+
+            // Our recently sent message should be in the history
+            const found = history.find((m: any) => m.id === sentMessage.id);
+            expect(found).toBeDefined();
+            expect(found.content).toBe(testContent);
+        });
+
+        test("supports pagination with 'before' parameter", async ({ request }) => {
+            await signin(request);
+
+            // Send two messages so we have a known ordering
+            const resp1 = await sendMessage(request, testChatId, "Pagination msg 1");
+            const msg1 = (await resp1.json()).message;
+            createdMessageIds.push(msg1.id);
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            const resp2 = await sendMessage(request, testChatId, "Pagination msg 2");
+            const msg2 = (await resp2.json()).message;
+            createdMessageIds.push(msg2.id);
+
+            // Fetch messages before msg2 — should include msg1 but not msg2
+            const response = await request.get(`/api/messages/${testChatId}?before=${msg2.id}`);
+            expect(response.status()).toBe(200);
+
+            const older = await response.json();
+            expect(Array.isArray(older)).toBe(true);
+
+            const hasMsg1 = older.some((m: any) => m.id === msg1.id);
+            const hasMsg2 = older.some((m: any) => m.id === msg2.id);
+            expect(hasMsg1).toBe(true);
+            expect(hasMsg2).toBe(false);
+        });
+
+        test("returns 401 for unauthenticated request", async ({ request }) => {
+            const response = await request.get(`/api/messages/${testChatId}`);
+            expect(response.status()).toBe(401);
+        });
+
+        test("does not include soft-deleted messages", async ({ request }) => {
+            await signin(request);
+
+            // Send and then delete a message
+            const sendResp = await sendMessage(request, testChatId, "Will be deleted for history test");
+            const deletedMsg = (await sendResp.json()).message;
+            createdMessageIds.push(deletedMsg.id);
+            await deleteMessageViaApi(request, testChatId, deletedMsg.id);
+
+            // Fetch history
+            const response = await request.get(`/api/messages/${testChatId}`);
+            expect(response.status()).toBe(200);
+
+            const history = await response.json();
+            const found = history.find((m: any) => m.id === deletedMsg.id);
+            expect(found).toBeUndefined();
         });
 
     });
@@ -1091,6 +1137,332 @@ test.describe("Chat Messages endpoint tests (/api/messages/[chatId])", () => {
             const body = await response.json();
             expect(body.message.author).toBe(regUserId);
             createdMessageIds.push(body.message.id);
+        });
+
+    });
+
+    // ==================== MESSAGE REACTION TESTS (PUT) ====================
+
+    test.describe("Message reactions (PUT)", () => {
+
+        test.describe("Permission checks", () => {
+
+            test("PUT: requires authentication", async ({ request }) => {
+                const chatId = testChatId || 'test-chat-id';
+                const response = await request.put(`/api/messages/${chatId}`, {
+                    multipart: {
+                        messageId: "some-message-id",
+                        emoji: "👍"
+                    }
+                });
+                expect(response.status()).toBe(401);
+            });
+
+        });
+
+        test.describe("Input validation", () => {
+
+            test("returns 400 when messageId is missing", async ({ request }) => {
+                await signin(request);
+                const response = await request.put(`/api/messages/${testChatId}`, {
+                    multipart: { emoji: "👍" }
+                });
+                expect(response.status()).toBe(400);
+                const body = await response.json();
+                expect(body.error).toBeDefined();
+            });
+
+            test("returns 400 when emoji is invalid", async ({ request }) => {
+                await signin(request);
+
+                // Create a message to react to
+                const sendResp = await sendMessage(request, testChatId, "Reaction validation test");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                const response = await reactToMessage(request, testChatId, messageId, "🤡");
+                expect(response.status()).toBe(400);
+                const body = await response.json();
+                expect(body.error).toBeDefined();
+            });
+
+            test("returns 400 when emoji is missing and action is not remove", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "No emoji test");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                const response = await request.put(`/api/messages/${testChatId}`, {
+                    multipart: { messageId }
+                });
+                expect(response.status()).toBe(400);
+            });
+
+        });
+
+        test.describe("Adding reactions", () => {
+
+            test("successfully adds a reaction to a message", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "React to me");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                const response = await reactToMessage(request, testChatId, messageId, "👍");
+                expect(response.status()).toBe(201);
+
+                const body = await response.json();
+                expect(body.reactions).toBeDefined();
+                expect(body.reactions[modUserId]).toBe("👍");
+
+                // Verify in database
+                const dbReaction = await db.select().from(messagesReactions)
+                    .where(and(
+                        eq(messagesReactions.messageId, messageId),
+                        eq(messagesReactions.userId, modUserId)
+                    ));
+                expect(dbReaction.length).toBe(1);
+                expect(dbReaction[0].emoji).toBe("👍");
+            });
+
+            test("each valid emoji can be added as a reaction", async ({ request }) => {
+                await signin(request);
+                const validEmojis = ["👍", "👎", "❤️", "❗", "❓", "🔥", "💀", "🙂"];
+
+                for (const emoji of validEmojis) {
+                    const sendResp = await sendMessage(request, testChatId, `Emoji test: ${emoji}`);
+                    const messageId = (await sendResp.json()).message.id;
+                    createdMessageIds.push(messageId);
+
+                    const response = await reactToMessage(request, testChatId, messageId, emoji);
+                    expect(response.status()).toBe(201);
+
+                    const body = await response.json();
+                    expect(body.reactions[modUserId]).toBe(emoji);
+                }
+            });
+
+            test("reaction is idempotent — reacting with the same emoji again succeeds", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Idempotent reaction test");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // React twice with the same emoji
+                const resp1 = await reactToMessage(request, testChatId, messageId, "🔥");
+                expect(resp1.status()).toBe(201);
+
+                const resp2 = await reactToMessage(request, testChatId, messageId, "🔥");
+                expect(resp2.status()).toBe(201);
+
+                // Should still have exactly one reaction from this user
+                const body = await resp2.json();
+                expect(body.reactions[modUserId]).toBe("🔥");
+
+                const dbReactions = await db.select().from(messagesReactions)
+                    .where(and(
+                        eq(messagesReactions.messageId, messageId),
+                        eq(messagesReactions.userId, modUserId)
+                    ));
+                expect(dbReactions.length).toBe(1);
+            });
+
+            test("changing reaction emoji replaces the previous one", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Change reaction test");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Add initial reaction
+                await reactToMessage(request, testChatId, messageId, "👍");
+
+                // Change to a different emoji
+                const response = await reactToMessage(request, testChatId, messageId, "❤️");
+                expect(response.status()).toBe(201);
+
+                const body = await response.json();
+                expect(body.reactions[modUserId]).toBe("❤️");
+
+                // Verify only one reaction exists in DB (upsert, not insert)
+                const dbReactions = await db.select().from(messagesReactions)
+                    .where(and(
+                        eq(messagesReactions.messageId, messageId),
+                        eq(messagesReactions.userId, modUserId)
+                    ));
+                expect(dbReactions.length).toBe(1);
+                expect(dbReactions[0].emoji).toBe("❤️");
+            });
+
+        });
+
+        test.describe("Removing reactions", () => {
+
+            test("successfully removes a reaction with action=remove", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Remove reaction test");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Add a reaction
+                await reactToMessage(request, testChatId, messageId, "👍");
+
+                // Verify it exists
+                let dbBefore = await db.select().from(messagesReactions)
+                    .where(and(
+                        eq(messagesReactions.messageId, messageId),
+                        eq(messagesReactions.userId, modUserId)
+                    ));
+                expect(dbBefore.length).toBe(1);
+
+                // Remove the reaction
+                const response = await reactToMessage(request, testChatId, messageId, "", "remove");
+                expect(response.status()).toBe(201);
+
+                const body = await response.json();
+                expect(body.reactions[modUserId]).toBeUndefined();
+
+                // Verify removed from database
+                const dbAfter = await db.select().from(messagesReactions)
+                    .where(and(
+                        eq(messagesReactions.messageId, messageId),
+                        eq(messagesReactions.userId, modUserId)
+                    ));
+                expect(dbAfter.length).toBe(0);
+            });
+
+            test("removing a non-existent reaction succeeds gracefully", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Remove nonexistent reaction");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Remove without ever adding — should not error
+                const response = await reactToMessage(request, testChatId, messageId, "", "remove");
+                expect(response.status()).toBe(201);
+
+                const body = await response.json();
+                expect(Object.keys(body.reactions).length).toBe(0);
+            });
+
+        });
+
+        test.describe("Multi-user reactions", () => {
+
+            test("multiple users can react to the same message", async ({ request }) => {
+                // Mod user reacts
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Multi-user reaction");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                const modResp = await reactToMessage(request, testChatId, messageId, "👍");
+                expect(modResp.status()).toBe(201);
+
+                // Regular user reacts
+                await signin(request, process.env.REG_USER, process.env.REG_PASS);
+                const regResp = await reactToMessage(request, testChatId, messageId, "❤️");
+                expect(regResp.status()).toBe(201);
+
+                const body = await regResp.json();
+                expect(body.reactions[modUserId]).toBe("👍");
+                expect(body.reactions[regUserId]).toBe("❤️");
+            });
+
+            test("removing one user's reaction does not affect another user's reaction", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Independent reactions");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Both users react
+                await reactToMessage(request, testChatId, messageId, "🔥");
+
+                await signin(request, process.env.REG_USER, process.env.REG_PASS);
+                await reactToMessage(request, testChatId, messageId, "💀");
+
+                // Regular user removes their reaction
+                const removeResp = await reactToMessage(request, testChatId, messageId, "", "remove");
+                expect(removeResp.status()).toBe(201);
+
+                const body = await removeResp.json();
+                // Mod's reaction should still be present
+                expect(body.reactions[modUserId]).toBe("🔥");
+                // Regular user's reaction should be gone
+                expect(body.reactions[regUserId]).toBeUndefined();
+            });
+
+        });
+
+        test.describe("Edge cases", () => {
+
+            test("cannot react to a non-existent message", async ({ request }) => {
+                await signin(request);
+
+                const response = await reactToMessage(request, testChatId, "999999999999999999", "👍");
+                expect([404, 500]).toContain(response.status());
+            });
+
+            test("cannot react to a deleted message", async ({ request }) => {
+                await signin(request);
+
+                // Create and delete a message
+                const sendResp = await sendMessage(request, testChatId, "Will be deleted before react");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+                await deleteMessageViaApi(request, testChatId, messageId);
+
+                // Try to react
+                const response = await reactToMessage(request, testChatId, messageId, "👍");
+                expect(response.status()).toBe(404);
+            });
+
+            test("cannot react to a message in a different chat", async ({ request }) => {
+                await signin(request);
+
+                // Create another chat
+                const createResp = await createChat(request, regUserId, "Reaction cross-chat test");
+                const otherChatId = (await createResp.json()).chat.id;
+                createdChatIds.push(otherChatId);
+
+                // Create a message in the other chat
+                const sendResp = await sendMessage(request, otherChatId, "Message in other chat");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Try to react via the wrong chatId
+                const response = await reactToMessage(request, testChatId, messageId, "👍");
+                expect(response.status()).toBe(404);
+            });
+
+            test("reactions appear in GET message history", async ({ request }) => {
+                await signin(request);
+
+                const sendResp = await sendMessage(request, testChatId, "Check reactions in history");
+                const messageId = (await sendResp.json()).message.id;
+                createdMessageIds.push(messageId);
+
+                // Add a reaction
+                await reactToMessage(request, testChatId, messageId, "🙂");
+
+                // Fetch history and find the message
+                const historyResp = await request.get(`/api/messages/${testChatId}`);
+                expect(historyResp.status()).toBe(200);
+                const history = await historyResp.json();
+
+                const msg = history.find((m: any) => m.id === messageId);
+                expect(msg).toBeDefined();
+                expect(msg.reactions).toBeDefined();
+                expect(msg.reactions[modUserId]).toBe("🙂");
+            });
+
         });
 
     });

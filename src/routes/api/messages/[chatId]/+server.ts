@@ -64,7 +64,7 @@ export const GET: RequestHandler = async ({ request, params, locals }) => {
         return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 401 });
     }
 
-    const search = new URLSearchParams(request.url);
+    const search = new URL(request.url).searchParams;
     const messageId = search.get("before");
 
     // fetch the most recent message in this chat
@@ -209,7 +209,9 @@ export const DELETE: RequestHandler = async ({ request, locals, params }) => {
             })
             .then((msg) => {
                 if (!msg) return null;
-                return normaliseMessageFromDatabase(msg);
+                let newmsg = normaliseMessageFromDatabase(msg);
+                newmsg.deleted = msg.deleted;
+                return newmsg;
             });
         console.log(message);
     } catch (e) {
@@ -270,14 +272,17 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
     try {
         message = await db.query.messages
             .findFirst({
-                where: (messages) => and(eq(messages.id, messageId), eq(messages.chatId, params.chatId || "")),
+                where: (messages) => and(eq(messages.id, messageId), eq(messages.chatId, params.chatId || ""), eq(messages.deleted, false)),
                 with: {
                     reactions: true,
                 },
             })
             .then((msg) => {
                 if (!msg) return null;
-                return normaliseMessageFromDatabase(msg);
+                let newmsg = normaliseMessageFromDatabase(msg)
+                newmsg.deleted = msg.deleted;
+                newmsg.editHistory = msg.editHistory;
+                return newmsg;
             });
     } catch (e) {
         console.error(`${request.url}: Error retrieving message: `, e);
@@ -296,6 +301,7 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
     let newMessage: Message;
     try {
         // update the message content and edit history
+        console.log("new message edit history: ", [...message.editHistory ?? [], { content: message.content, editedAt: new Date().toISOString() }]);
         const newEditHistory = [...message.editHistory ?? [], { content: message.content, editedAt: new Date().toISOString() }];
         newMessage = normaliseMessageFromDatabase(
             (
@@ -352,7 +358,7 @@ export const PUT: RequestHandler = async ({ request, locals, params }) => {
     try {
         message = await db.query.messages
             .findFirst({
-                where: (messages) => and(eq(messages.id, messageId), eq(messages.chatId, params.chatId || "")),
+                where: (messages) => and(eq(messages.id, messageId), eq(messages.chatId, params.chatId || ""), eq(messages.deleted, false)),
                 with: {
                     reactions: true,
                 },
@@ -361,9 +367,6 @@ export const PUT: RequestHandler = async ({ request, locals, params }) => {
                 if (!msg) return null;
                 return normaliseMessageFromDatabase(msg);
             });
-        if (!message) {
-            throw new Error("Message was null after normalisation");
-        }
     } catch (e) {
         console.error(`${request.url}: Error retrieving message: `, e);
         return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500 });

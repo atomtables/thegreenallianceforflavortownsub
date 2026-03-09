@@ -18,7 +18,7 @@ export const messages = pgTable("messages", {
     // content
     content: text("content").notNull(),
     // chat id that this message was sent in
-    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id),
+    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id, { onDelete: 'cascade' }),
     // was message edited?
     edited: boolean("edited").notNull().default(false),
     // previous message history (in case message was edited) (only for admins)
@@ -45,7 +45,7 @@ export const chats = pgTable("chats", {
 
 // Junction table for chat participants (allows efficient lookup of user's chats)
 export const chatParticipants = pgTable("chat_participants", {
-    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id),
+    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id, { onDelete: 'cascade' }),
     userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
 }, (table) => [
     primaryKey({ columns: [table.chatId, table.userId] }),
@@ -83,9 +83,9 @@ export const messagesRelations = relations(messages, ({ one, many }) => ({
 }));
 
 export const messagesReadReceipts = pgTable("message_read_receipts", {
-    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id),
+    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id, { onDelete: 'cascade' }),
     userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
-    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id),
+    chatId: varchar("chat_id", { length: 21 }).notNull().references(() => chats.id, { onDelete: 'cascade' }),
 }, (table) => [
     primaryKey({ columns: [table.userId, table.chatId] }),
     index("message_read_receipts_user_idx").on(table.userId),
@@ -108,7 +108,7 @@ export const messagesReadReceiptsRelations = relations(messagesReadReceipts, ({ 
 }));
 
 export const messagesReactions = pgTable("message_reactions", {
-    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id),
+    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id, { onDelete: 'cascade' }),
     userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
     emoji: varchar("emoji", { length: 64 }).notNull(),
 }, (table) => [

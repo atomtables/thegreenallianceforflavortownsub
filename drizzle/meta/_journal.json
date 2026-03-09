@@ -15,6 +15,13 @@
       "when": 1768056929045,
       "tag": "0001_first_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773017421527,
+      "tag": "0002_misty_the_hunter",
+      "breakpoints": true
     }
   ]
 }
