@@ -50,6 +50,29 @@
     // State for the "new chat" dropdown
     let showNewChatDropdown = $state(false);
     let newChatSearch = $state("");
+    // State for group chat creation mode
+    let isGroupChatMode = $state(false);
+    let selectedGroupMembers = $state<string[]>([]);
+    let groupChatName = $state("");
+
+    // Group chat member colors (high-contrast with white text)
+    const GROUP_MEMBER_COLORS = [
+        "#1d4ed8", // blue-700
+        "#6d28d9", // violet-700
+        "#0f766e", // teal-700
+        "#b45309", // amber-700
+        "#b91c1c", // red-700
+        "#4338ca", // indigo-700
+        "#0369a1", // sky-700
+        "#c2410c", // orange-700
+    ];
+    const getGroupMemberColorHex = (userId: string): string => {
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) {
+            hash = ((hash * 31) + userId.charCodeAt(i)) >>> 0;
+        }
+        return GROUP_MEMBER_COLORS[hash % GROUP_MEMBER_COLORS.length];
+    };
     // State for the main chat emoji picker
     let showEmojiPicker = $state(false);
     // This is for the divider between unread messages (because it wouldn't
@@ -155,6 +178,13 @@
                 });
             }
         });
+        source.addEventListener("chat-created", async (ev) => {
+            console.log("[SSE:chat-created]", ev.data);
+            const { chat } = JSON.parse(ev.data);
+            if (!chats.find((c) => c.id === chat.id)) {
+                chats = [{ ...chat, readReceipts: { messageId: null, count: 0 } }, ...chats];
+            }
+        });
     };
 
     // This sends the server our last read message for the currently selected chat,
@@ -199,6 +229,9 @@
         if (!target.closest("[data-new-chat-dropdown]")) {
             showNewChatDropdown = false;
             newChatSearch = "";
+            isGroupChatMode = false;
+            selectedGroupMembers = [];
+            groupChatName = "";
         }
 
         const currentChatId = currentlySelectedChatId;
@@ -439,6 +472,51 @@
         showNewChatDropdown = false;
         newChatSearch = "";
     };
+
+    const createGroupChat = async () => {
+        if (selectedGroupMembers.length === 0) {
+            alert("Error", "Please select at least one other person for the group chat");
+            return;
+        }
+        const formData = new FormData();
+        for (const id of selectedGroupMembers) {
+            formData.append("participantIds", id);
+        }
+        if (groupChatName.trim()) {
+            formData.append("name", groupChatName.trim());
+        }
+
+        const res = await fetch("/api/messages", {
+            method: "PUT",
+            body: formData,
+        });
+
+        if (res.ok) {
+            const { chat, existing } = await res.json();
+            if (existing) {
+                const existingChat = chats.find((c) => c.id === chat.id);
+                if (existingChat) {
+                    currentlySelectedChatId = existingChat.id;
+                } else {
+                    chats = [{ ...chat, participantIds: chat.participants?.map((p: any) => p.userId) ?? chat.participantIds, lastMessage: null, readReceipts: { messageId: null, count: 0 } }, ...chats];
+                    currentlySelectedChatId = chat.id;
+                }
+            } else {
+                const newChat = { ...chat, readReceipts: { messageId: null, count: 0 } };
+                chats = [newChat, ...chats];
+                currentlySelectedChatId = newChat.id;
+            }
+        } else {
+            const err = await res.json();
+            alert("Error", err.error || "Failed to create group chat");
+        }
+
+        showNewChatDropdown = false;
+        newChatSearch = "";
+        isGroupChatMode = false;
+        selectedGroupMembers = [];
+        groupChatName = "";
+    };
 </script>
 
 <svelte:window on:focus={onfocuswindow} on:click={onclickwindow} />
@@ -450,9 +528,19 @@
                 <div class="px-4">CHATS</div>
                 <div class="flex flex-row gap-2" data-new-chat-dropdown>
                     <div class="relative">
-                        <IconButton onclick={() => { showNewChatDropdown = !showNewChatDropdown; newChatSearch = ""; }}><span class="material-symbols-outlined icons-fill">add</span></IconButton>
+                        <IconButton onclick={() => { showNewChatDropdown = !showNewChatDropdown; newChatSearch = ""; isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}><span class="material-symbols-outlined icons-fill">add</span></IconButton>
                         {#if showNewChatDropdown}
-                            <div class="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-800 shadow-lg rounded-md overflow-hidden" transition:slide={{ duration: 150 }}>
+                            <div class="absolute right-0 top-full mt-1 z-50 w-72 bg-gray-800 shadow-lg rounded-md overflow-hidden" transition:slide={{ duration: 150 }}>
+                                <div class="flex border-b border-gray-700">
+                                    <button
+                                        onclick={() => { isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}
+                                        class="flex-1 py-2 text-xs font-semibold {!isGroupChatMode ? 'bg-green-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                    >Direct Message</button>
+                                    <button
+                                        onclick={() => { isGroupChatMode = true; }}
+                                        class="flex-1 py-2 text-xs font-semibold {isGroupChatMode ? 'bg-green-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                    >Group Chat</button>
+                                </div>
                                 <div class="p-2">
                                     <input
                                         bind:value={newChatSearch}
@@ -461,6 +549,16 @@
                                         class="w-full bg-gray-700 text-white text-sm px-3 py-2 rounded placeholder-gray-400 border-0 focus:outline-none focus:ring-1 focus:ring-green-500"
                                     />
                                 </div>
+                                {#if isGroupChatMode}
+                                    <div class="px-2 pb-1">
+                                        <input
+                                            bind:value={groupChatName}
+                                            type="text"
+                                            placeholder="Group name (optional)..."
+                                            class="w-full bg-gray-700 text-white text-sm px-3 py-2 rounded placeholder-gray-400 border-0 focus:outline-none focus:ring-1 focus:ring-green-500"
+                                        />
+                                    </div>
+                                {/if}
                                 <div class="max-h-60 overflow-y-auto">
                                     {#await data.users}
                                         <div class="flex justify-center p-3"><Spinner /></div>
@@ -470,17 +568,49 @@
                                             <div class="text-sm text-gray-400 text-center py-3">No users found</div>
                                         {:else}
                                             {#each filtered as user}
-                                                <button
-                                                    onclick={() => createChat(user.id)}
-                                                    class="flex items-center gap-3 w-full px-3 py-2 text-left text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors"
-                                                >
-                                                    <img src={user.avatar || "/noprofile.png"} alt="avatar" class="w-8 h-8 rounded-full bg-gray-500" />
-                                                    <span>{toTitleCase(`${user.firstName} ${user.lastName}`)}</span>
-                                                </button>
+                                                {#if isGroupChatMode}
+                                                    <button
+                                                        onclick={() => {
+                                                            if (selectedGroupMembers.includes(user.id)) {
+                                                                selectedGroupMembers = selectedGroupMembers.filter(id => id !== user.id);
+                                                            } else {
+                                                                selectedGroupMembers = [...selectedGroupMembers, user.id];
+                                                            }
+                                                        }}
+                                                        class="flex items-center gap-3 w-full px-3 py-2 text-left text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors {selectedGroupMembers.includes(user.id) ? 'bg-green-800/40' : ''}"
+                                                    >
+                                                        <div class="w-5 h-5 rounded border-2 {selectedGroupMembers.includes(user.id) ? 'bg-green-500 border-green-500' : 'border-gray-400'} flex items-center justify-center shrink-0">
+                                                            {#if selectedGroupMembers.includes(user.id)}
+                                                                <span class="material-symbols-outlined text-white" style="font-size: 14px;">check</span>
+                                                            {/if}
+                                                        </div>
+                                                        <img src={user.avatar || "/noprofile.png"} alt="avatar" class="w-8 h-8 rounded-full bg-gray-500" />
+                                                        <span>{toTitleCase(`${user.firstName} ${user.lastName}`)}</span>
+                                                    </button>
+                                                {:else}
+                                                    <button
+                                                        onclick={() => createChat(user.id)}
+                                                        class="flex items-center gap-3 w-full px-3 py-2 text-left text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors"
+                                                    >
+                                                        <img src={user.avatar || "/noprofile.png"} alt="avatar" class="w-8 h-8 rounded-full bg-gray-500" />
+                                                        <span>{toTitleCase(`${user.firstName} ${user.lastName}`)}</span>
+                                                    </button>
+                                                {/if}
                                             {/each}
                                         {/if}
                                     {/await}
                                 </div>
+                                {#if isGroupChatMode}
+                                    <div class="p-2 border-t border-gray-700">
+                                        <button
+                                            onclick={() => createGroupChat()}
+                                            class="w-full py-2 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white text-sm font-semibold rounded transition-colors disabled:opacity-50"
+                                            disabled={selectedGroupMembers.length === 0}
+                                        >
+                                            Create Group ({selectedGroupMembers.length} selected)
+                                        </button>
+                                    </div>
+                                {/if}
                             </div>
                         {/if}
                     </div>
@@ -501,11 +631,21 @@
                         class="block grow w-full {chat.id === currentlySelectedChatId ? 'bg-neutral-500/50' : 'hover:bg-neutral-500/25 active:bg-neutral-500/50'} font-bold py-5 px-2 text-lg flex items-center justify-between gap-2 transition-all"
                     >
                         <div class="flex flex-row items-center gap-2">
-                            <img src="/noprofile.png" alt="avatar" class="h-10 px-2 rounded-full" />
+                            {#if chat.isGroup}
+                                <div class="h-10 w-10 px-0.5 rounded-full bg-gray-500 flex items-center justify-center shrink-0">
+                                    <span class="material-symbols-outlined text-gray-200" style="font-size: 26px;">group</span>
+                                </div>
+                            {:else}
+                                {#await data.users then users}
+                                    {@const sidebarOther = chat.participantIds.find((id) => id !== data.user.id)}
+                                    {@const sidebarUser = users.find((u) => u.id === sidebarOther)}
+                                    <img src={sidebarUser?.avatar || "/noprofile.png"} alt="avatar" class="h-10 w-10 px-0.5 rounded-full bg-gray-500 shrink-0 object-cover" />
+                                {/await}
+                            {/if}
                             <div class="flex flex-col items-start justify-evenly text-left -space-y-1">
                                 <div class="overflow-clip line-clamp-1">
                                     {#if chat.isGroup}
-                                        {chat.name}
+                                        {toTitleCase(chat.name ?? "Group Chat")}
                                     {:else}
                                         {#await data.users}
                                             <span>Loading...</span>
@@ -556,10 +696,17 @@
                 {#if chat != null}
                     {@const other = chat.participantIds.find((id) => id !== data.user.id)}
                     {@const user = users.find((u) => u.id === other)}
-                    {@const name = user ? `${user.firstName} ${user.lastName}` : "Unknown User"}
+                    {@const chatDisplayName = chat.isGroup ? (chat.name ?? "Group Chat") : (user ? toTitleCase(`${user.firstName} ${user.lastName}`) : "Unknown User")}
 
                     {#snippet chatBubble(isMine, message, tail, stamp, reactionGroups, i)}
+                        {@const msgAuthor = !isMine ? (chat.isGroup ? users.find(u => u.id === message.author) : user) : null}
+                        {@const bubbleBgColor = isMine ? '#16a34a' : (chat.isGroup ? getGroupMemberColorHex(message.author) : '#4b5563')}
                         <div class="{isMine ? 'self-end' : 'self-start'} max-w-1/2 flex flex-col {isMine ? 'items-end' : 'items-start'} gap-1 group" data-menu-container>
+                            {#if !isMine && chat.isGroup && (i === 0 || messages[chat.id][i-1]?.author !== message.author)}
+                                <div class="text-xs font-semibold pl-9 pb-0.5" style="color: {getGroupMemberColorHex(message.author)};">
+                                    {msgAuthor ? toTitleCase(`${msgAuthor.firstName} ${msgAuthor.lastName}`) : "Unknown"}
+                                </div>
+                            {/if}
                             <div class="flex items-end gap-2 relative">
                                 {#if isMine}
                                     <div class="relative inline-block self-center">
@@ -581,12 +728,12 @@
                                     </div>
                                 {:else}
                                     {#if tail}
-                                        <img src={user?.avatar || "/noprofile.png"} alt="avatar" class="w-7 h-7 rounded-full bg-gray-500 mb-1" />
+                                        <img src={msgAuthor?.avatar || "/noprofile.png"} alt="avatar" class="w-7 h-7 rounded-full bg-gray-500 mb-1" />
                                     {:else}
                                         <div class="w-7 h-7"></div>
                                     {/if}
                                 {/if}
-                                <div class="relative {isMine ? 'bg-green-600' : 'bg-gray-600'} text-white p-3 shadow-md break-words rounded-md">
+                                <div class="relative text-white p-3 shadow-md break-words rounded-md" style="background-color: {bubbleBgColor};">
                                     <div
                                         class="absolute bg-gray-700 flex rounded-full {isMine ? 'flex-row' : 'flex-row-reverse'} items-center z-10 transition-all {openEmojiSelectorForMessage === message.id || reactionGroups.length > 0 ? 'opacity-100' : 'opacity-0'} group-hover:opacity-100"
                                         style="top: -14px; {isMine ? 'right' : 'left'}: calc(100% - 14px);"
@@ -639,7 +786,7 @@
                                     </div>
                                     {message.content}
                                     {#if tail}
-                                        <div class="absolute {isMine ? '-right-2' : '-left-2'} bottom-0 w-0 h-0 border-solid border-t-[15px] border-t-transparent {isMine ? 'border-l-[15px] border-l-green-600' : 'border-r-[15px] border-r-gray-600'}"></div>
+                                        <div class="absolute {isMine ? '-right-2' : '-left-2'} bottom-0 w-0 h-0 border-solid border-t-[15px] border-t-transparent" style="{isMine ? 'border-left: 15px solid #16a34a;' : `border-right: 15px solid ${bubbleBgColor};`}"></div>
                                     {/if}
                                     {#if message.edited}
                                         <div class="text-[0.625rem] text-white/70 italic pt-0.5 select-none">Edited</div>
@@ -654,23 +801,22 @@
                                 {/if}
                             </div>
                             {#if tail}
-                                <div class="text-[11px] {isMine ? 'text-white/80 pr-1' : 'text-gray-200/90 pl-1'}">{isMine ? 'You' : toTitleCase(user.firstName)} • {formatDate(stamp)}</div>
+                                <div class="text-[11px] {isMine ? 'text-white/80 pr-1' : 'text-gray-200/90 pl-1'}">{isMine ? 'You' : toTitleCase(msgAuthor?.firstName ?? '')} • {formatDate(stamp)}</div>
                             {/if}
                         </div>
                     {/snippet}
                     <div class="flex flex-col gap-0 inset-0 h-full">
                         <div class="w-full bg-green-700 font-medium text-xl flex justify-between items-center p-2 shadow-2xl">
                             <div class="px-2">
-                                {toTitleCase(name)}
+                                {toTitleCase(chatDisplayName)}
                             </div>
                             <div class="flex flex-row gap-2">
-                                {#if user.phone}
+                                {#if !chat.isGroup && user?.phone}
                                     <IconButton onclick={() => (window.location.href = `tel:${user.phone}`)}>
                                         <span class="material-symbols-outlined icons-fill">phone</span>
                                     </IconButton>
                                 {/if}
-                                <IconButton onclick={() => (window.location.href = `mailto:${user.email}`)}><span class="material-symbols-outlined icons-fill">email</span></IconButton>
-                                <IconButton onclick={() => null}><span class="material-symbols-outlined icons-fill">account_circle</span></IconButton>
+                                <IconButton onclick={() => null}><span class="material-symbols-outlined icons-fill">info</span></IconButton>
                             </div>
                         </div>
                         <div 

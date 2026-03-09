@@ -89,7 +89,12 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
     }
 
-    const userChats = Array.from(chatMap.values());
+    const userChats = Array.from(chatMap.values()).sort((a, b) => {
+        if (!a.lastMessage && !b.lastMessage) return 0;
+        if (!a.lastMessage) return 1;
+        if (!b.lastMessage) return -1;
+        return BigInt(b.lastMessage.id) > BigInt(a.lastMessage.id) ? 1 : -1;
+    });
 
     const usersInvolved: { [id: string]: User } = {};
     for (const chat of userChats) {
@@ -208,7 +213,7 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
     try {
         const chatInsert = await db.insert(chats).values({
             isGroup: participantIds.length > 2,
-            name: hasExplicitName ? trimmedName : participantIds.length > 2 ? validUsers.map(u => u.username).join(", ") : null,
+            name: hasExplicitName ? trimmedName : participantIds.length > 2 ? validUsers.map(u => `${u.firstName} ${u.lastName}`).join(", ") : null,
         }).returning().then(res => res[0]);
 
         // Insert participants into the junction table
@@ -228,9 +233,10 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
             readReceipts: null
         };
 
-        // notify all participants about the new chat
+        // notify all OTHER participants about the new chat (creator adds it themselves via response)
         new Promise<void>((res) => {
             for (const participantId of participantIds) {
+                if (participantId === locals.user.id) continue; // skip creator
                 if (clients && clients[participantId]) {
                     for (const sessionId in clients[participantId]) {
                          clients[participantId][sessionId]("chat-created", JSON.stringify({ chat: newChat }));
