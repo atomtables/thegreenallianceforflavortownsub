@@ -37,6 +37,8 @@
     // We don't store messages for chats we have not opened yet, because
     // we can just get those initially anyway.
     let messages = $state<{ [chatId: string]: Message[] }>({});
+    let isLoadingMore = $state(false);
+    let allLoaded = $state<{ [chatId: string]: boolean }>({});
     // This keeps track of which menu is currently open for message actions
     let openMenuForMessage: string | null = $state(null);
     // This keeps track of which emoji selector is currently open for message
@@ -225,11 +227,16 @@
 
     // Whenever the currently selected chat changes, we load its messages if we haven't already
     $effect(() => {
+        if (currentlySelectedChatId) isLoadingMore = false;
         if (currentlySelectedChatId && !messages[currentlySelectedChatId])
             (async () => {
                 const res = await fetch(`/api/messages/${currentlySelectedChatId}`);
                 if (res.ok) {
-                    messages[currentlySelectedChatId] = await res.json();
+                    const loadedMessages = await res.json();
+                    if (loadedMessages.length === 0) {
+                        allLoaded[currentlySelectedChatId] = true;
+                    }
+                    messages[currentlySelectedChatId] = loadedMessages;
                 } else {
                     alert("Error", `Failed to load messages: ${res.statusText}`);
                     currentlySelectedChatId = null;
@@ -542,12 +549,7 @@
             {/if}
         </div>
         <div
-            class="bg-gray-600/50 flex-1 grow-1 overflow-auto"
-            onscroll={(event: Event) => {
-                const target = event.target as HTMLElement;
-                const threshold = 20; // pixels from the bottom to consider "at bottom"
-                atBottom = target.scrollHeight - target.scrollTop - target.clientHeight <= threshold;
-            }}
+            class="bg-gray-600/50 flex-1 grow-1"
         >
             {#await data.users then users}
                 {@const chat = currentlySelectedChat}
@@ -671,7 +673,46 @@
                                 <IconButton onclick={() => null}><span class="material-symbols-outlined icons-fill">account_circle</span></IconButton>
                             </div>
                         </div>
-                        <div class="flex-1 overflow-auto p-5">
+                        <div 
+                            class="flex-1 overflow-auto p-5"
+                            onscroll={async (event: Event) => {
+                                const target = event.target as HTMLElement;
+                                const threshold = 20; // pixels from the bottom to consider "at bottom"
+                                atBottom = target.scrollHeight - target.scrollTop - target.clientHeight <= threshold;
+
+                                const chatId = currentlySelectedChatId;
+                                console.log(target.scrollTop, target.scrollHeight, target.clientHeight, atBottom, isLoadingMore, allLoaded[chatId]);
+                                if (target.scrollTop <= 20 && !isLoadingMore && !allLoaded[chatId]) {
+                                    isLoadingMore = true;
+                                    const currentMessages = messages[chatId];
+                                    if (currentMessages && currentMessages.length > 0) {
+                                        const oldestMessageId = currentMessages[0].id;
+                                        const oldScrollHeight = target.scrollHeight;
+
+                                        try {
+                                            const res = await fetch(`/api/messages/${chatId}?before=${oldestMessageId}`);
+                                            if (res.ok) {
+                                                const newMessages = await res.json();
+                                                if (newMessages.length === 0) {
+                                                    allLoaded[chatId] = true;
+                                                } else {
+                                                    // Use the latest messages state to include any new incoming messages
+                                                    messages[chatId] = [...newMessages, ...messages[chatId]];
+                                                    // Only restore scroll position if we are still viewing the same chat
+                                                    if (currentlySelectedChatId === chatId) {
+                                                        await tick();
+                                                        target.scrollTop = target.scrollHeight - oldScrollHeight;
+                                                    }
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.error("Failed to load older messages", e);
+                                        }
+                                    }
+                                    isLoadingMore = false;
+                                }
+                            }}
+                        >
                             {#if !messages[chat.id]}
                                 <div class="w-full flex justify-center items-center p-5 gap-2 font-bold text-lg">
                                     <Spinner />
