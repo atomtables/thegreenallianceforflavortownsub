@@ -69,11 +69,30 @@ export const GET: RequestHandler = async ({ request, params, locals }) => {
 
     // fetch the most recent message in this chat
     if (!messageId) {
+        // Find last read message to determine how many messages to load
+        const readReceipt = await db.query.messagesReadReceipts.findFirst({
+            where: (receipts) => and(eq(receipts.chatId, params.chatId || ""), eq(receipts.userId, locals.user?.id || ""))
+        });
+        
+        const lastReadId = readReceipt?.messageId || "0";
+        
+        // Count unread messages
+        const unreadCountRes = await db.select({ count: count() })
+            .from(messages)
+            .where(and(
+                eq(messages.chatId, params.chatId ?? ""), 
+                gt(messages.id, lastReadId),
+                ne(messages.deleted, true)
+            ));
+            
+        const unreadCount = Number(unreadCountRes[0].count);
+        const limit = Math.max(50, unreadCount);
+
         const latest = await db.query.messages
             .findMany({
                 where: (messages) => and(eq(messages.chatId, params.chatId ?? ""), ne(messages.deleted, true)),
                 orderBy: (messages) => [desc(messages.id)],
-                limit: 50,
+                limit: limit,
                 with: {
                     reactions: true
                 }

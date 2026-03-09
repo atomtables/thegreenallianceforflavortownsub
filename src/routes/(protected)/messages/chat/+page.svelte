@@ -716,7 +716,7 @@
                                     <span class="material-symbols-outlined icons-fill">emoji_emotions</span>
                                 </IconButton>
                                 <div class="relative flex-1 group -mt-1.5">
-                                    <input bind:value={newMessage} type="text" placeholder="Type a message..." class="w-full bg-gray-700 text-white px-2 pt-2 pb-1 placeholder-gray-300 border-0 focus:outline-none focus:ring-0 focus:border-transparent" />
+                                    <input bind:value={newMessage} type="text" placeholder="Type a message..." class="w-full bg-gray-700 text-white px-2 pt-2 pb-1 placeholder-gray-300 border-0 focus:outline-none focus:ring-0 focus:border-transparent" onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} />
                                     <div class="absolute left-2 right-2 bottom-0 h-px bg-gray-600"></div>
                                     <div class="absolute left-2 right-2 bottom-0 h-0.5 bg-green-400 scale-x-0 group-focus-within:scale-x-100 transition-transform duration-200 origin-left"></div>
                                 </div>

@@ -9,6 +9,7 @@ import { RequiresPermissions } from "$lib/functions/requirePermissions";
 import { Permission, Role, type User } from "$lib/types/types";
 import { and, count, desc, eq, inArray, gt, ne } from "drizzle-orm";
 import { cleanUserFromDatabase } from "$lib/server/auth";
+import { _clients as clients } from "./stream/+server";
 
 // Retrieve all chats for a given user.
 export const GET: RequestHandler = async ({ locals }) => {
@@ -226,6 +227,18 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
             lastMessage: null,
             readReceipts: null
         };
+
+        // notify all participants about the new chat
+        new Promise<void>((res) => {
+            for (const participantId of participantIds) {
+                if (clients && clients[participantId]) {
+                    for (const sessionId in clients[participantId]) {
+                         clients[participantId][sessionId]("chat-created", JSON.stringify({ chat: newChat }));
+                    }
+                }
+            }
+            res();
+        });
 
         return new Response(JSON.stringify({ chat: newChat }), { status: 201 });
     } catch (e) {
