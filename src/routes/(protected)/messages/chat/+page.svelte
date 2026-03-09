@@ -1,6 +1,7 @@
 <script lang="ts">
     import Button from "$lib/components/Button.svelte";
     import { confirm, prompt, alert } from "$lib/components/Dialog.svelte";
+    import EmojiPicker from "$lib/components/EmojiPicker.svelte";
     import IconButton from "$lib/components/IconButton.svelte";
     import Spinner from "$lib/components/Spinner.svelte";
     import { snowflakeToDate } from "$lib/functions/Snowflake.js";
@@ -47,6 +48,8 @@
     // State for the "new chat" dropdown
     let showNewChatDropdown = $state(false);
     let newChatSearch = $state("");
+    // State for the main chat emoji picker
+    let showEmojiPicker = $state(false);
     // This is for the divider between unread messages (because it wouldn't
     // make sense for the divider to disappear the second a new message arrives)
     let stickyUnreadBoundary: Record<string, string | null> = $state({});
@@ -712,9 +715,16 @@
                         </div>
                         <div>
                             <div class="w-full bg-gray-700 p-2 flex flex-row gap- items-center">
-                                <IconButton onclick={() => null} transparent>
-                                    <span class="material-symbols-outlined icons-fill">emoji_emotions</span>
-                                </IconButton>
+                                <div class="relative">
+                                    {#if showEmojiPicker}
+                                        <div class="absolute bottom-full left-0 mb-2 z-50" transition:scale={{ duration: 150, start: 0.9 }}>
+                                            <EmojiPicker onselect={(emoji) => { newMessage += emoji; showEmojiPicker = false; }} />
+                                        </div>
+                                    {/if}
+                                    <IconButton onclick={() => showEmojiPicker = !showEmojiPicker} transparent>
+                                        <span class="material-symbols-outlined icons-fill">emoji_emotions</span>
+                                    </IconButton>
+                                </div>
                                 <div class="relative flex-1 group -mt-1.5">
                                     <input bind:value={newMessage} type="text" placeholder="Type a message..." class="w-full bg-gray-700 text-white px-2 pt-2 pb-1 placeholder-gray-300 border-0 focus:outline-none focus:ring-0 focus:border-transparent" onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} />
                                     <div class="absolute left-2 right-2 bottom-0 h-px bg-gray-600"></div>
