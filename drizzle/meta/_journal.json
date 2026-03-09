@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1767968830488,
-      "tag": "0000_yellow_riptide",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1768056929045,
-      "tag": "0001_first_angel",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1773017421527,
-      "tag": "0002_misty_the_hunter",
+      "when": 1773017796734,
+      "tag": "0000_curious_sumo",
       "breakpoints": true
     }
   ]
