@@ -44,7 +44,7 @@ export interface Chat {
     participantIds: string[];
     // last message in the chat (if any)
     lastMessage?: Message;
-    readReceipts: {
+    readReceipts?: {
         messageId: string | null;
         count: number;
     };

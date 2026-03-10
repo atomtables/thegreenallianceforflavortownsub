@@ -4,7 +4,7 @@
 import { messages, chats, chatParticipants, users, messagesReadReceipts } from "$lib/server/db/schema";
 import type { RequestHandler } from "@sveltejs/kit";
 import { db } from "$lib/server/db/index";
-import { normaliseChatFromDatabase, type Chat, type Message } from "$lib/types/messages";
+import { normaliseChatFromDatabase, normaliseMessageFromDatabase, type Chat, type Message } from "$lib/types/messages";
 import { RequiresPermissions } from "$lib/functions/requirePermissions";
 import { Permission, Role, type User } from "$lib/types/types";
 import { and, count, desc, eq, inArray, gt, ne } from "drizzle-orm";
@@ -40,6 +40,9 @@ export const GET: RequestHandler = async ({ locals }) => {
                         limit: 1,
                         orderBy: desc(messages.id),
                         where: (msg) => eq(msg.deleted, false),
+                        with: {
+                            reactions: true
+                        }
                     },
                     readReceipts: {
                         where: (rr) => eq(rr.userId, userId)
@@ -52,7 +55,7 @@ export const GET: RequestHandler = async ({ locals }) => {
             ...row,
             chat: row.chat ? {
                 ...row.chat,
-                lastMessage: row.chat.messages?.[0] ?? null
+                lastMessage: row.chat.messages?.[0] ? normaliseMessageFromDatabase(row.chat.messages[0]) : null
             } : null
         };
     }));
@@ -76,7 +79,7 @@ export const GET: RequestHandler = async ({ locals }) => {
                 name: chat.name ?? undefined,
                 archived: chat.archived,
                 participantIds,
-                lastMessage: chat.lastMessage ?? null,
+                lastMessage: chat.lastMessage ?? undefined,
                 readReceipts: {
                     messageId: chat.readReceipts[0]?.messageId || null,
                     count: (await db.select({ value: count() }).from(messages).where(() => and(
@@ -89,7 +92,12 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
     }
 
-    const userChats = Array.from(chatMap.values());
+    const userChats = Array.from(chatMap.values()).sort((a, b) => {
+        if (!a.lastMessage && !b.lastMessage) return 0;
+        if (!a.lastMessage) return 1;
+        if (!b.lastMessage) return -1;
+        return BigInt(b.lastMessage.id) > BigInt(a.lastMessage.id) ? 1 : -1;
+    });
 
     const usersInvolved: { [id: string]: User } = {};
     for (const chat of userChats) {
@@ -106,6 +114,8 @@ export const GET: RequestHandler = async ({ locals }) => {
     return new Response(JSON.stringify({
         chats: userChats,
         // list of all users that can be linked to participantId
+        // because some users may not have access to the user lists if they don't
+        // have permissions.
         users: usersInvolved
     }), { status: 200 });
 }
@@ -136,7 +146,7 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
     if (!participantIds || participantIds.length === 0) {
         return new Response(JSON.stringify({ error: "Please provide all required fields" }), { status: 400 });
     }
-    participantIds.push(locals.user.id); // ensure the creator is included
+    participantIds.push(locals.user!.id); // ensure the creator is included
     participantIds = Array.from(new Set(participantIds)); // deduplicate
 
     const trimmedName = name?.trim() ?? "";
@@ -208,7 +218,7 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
     try {
         const chatInsert = await db.insert(chats).values({
             isGroup: participantIds.length > 2,
-            name: hasExplicitName ? trimmedName : participantIds.length > 2 ? validUsers.map(u => u.username).join(", ") : null,
+            name: hasExplicitName ? trimmedName : participantIds.length > 2 ? validUsers.map(u => `${u.firstName} ${u.lastName}`).join(", ") : null,
         }).returning().then(res => res[0]);
 
         // Insert participants into the junction table
@@ -224,13 +234,14 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
             isGroup: chatInsert.isGroup,
             name: chatInsert.name ?? undefined,
             participantIds: participantIds,
-            lastMessage: null,
-            readReceipts: null
+            lastMessage: undefined,
+            readReceipts: undefined
         };
 
-        // notify all participants about the new chat
+        // notify all OTHER participants about the new chat (creator adds it themselves via response)
         new Promise<void>((res) => {
             for (const participantId of participantIds) {
+                if (participantId === locals.user?.id) continue; // skip creator
                 if (clients && clients[participantId]) {
                     for (const sessionId in clients[participantId]) {
                          clients[participantId][sessionId]("chat-created", JSON.stringify({ chat: newChat }));
@@ -284,8 +295,8 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
         if (!chatRecord) {
             return new Response(JSON.stringify({ error: "Chat not found" }), { status: 404 });
         }
-    } catch (e) {
-        if (e.message === "Chat not found") {
+    } catch (e: any) {
+        if (e?.message === "Chat not found") {
             return new Response(JSON.stringify({ error: "Chat not found" }), { status: 404 });
         }
         console.error(`${request.url}: Error retrieving chat: `, e);
@@ -293,7 +304,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
     }
 
     // Check if the user is a participant
-    if (!chatRecord.participantIds.includes(locals.user.id)) {
+    if (!chatRecord.participantIds.includes(locals.user!.id)) {
         return new Response(JSON.stringify({ error: "You are not a participant in this chat" }), { status: 403 });
     }
 
