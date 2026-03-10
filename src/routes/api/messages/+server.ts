@@ -79,7 +79,7 @@ export const GET: RequestHandler = async ({ locals }) => {
                 name: chat.name ?? undefined,
                 archived: chat.archived,
                 participantIds,
-                lastMessage: chat.lastMessage ?? null,
+                lastMessage: chat.lastMessage ?? undefined,
                 readReceipts: {
                     messageId: chat.readReceipts[0]?.messageId || null,
                     count: (await db.select({ value: count() }).from(messages).where(() => and(

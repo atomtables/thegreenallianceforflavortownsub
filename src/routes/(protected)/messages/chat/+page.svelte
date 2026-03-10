@@ -642,7 +642,7 @@
                                     {/await}
                                 {/if}
                             </div>
-                            <div class="flex flex-col items-start justify-evenly text-left -space-y-0.5 grow-0">
+                            <div class="flex flex-col items-start justify-evenly text-left -space-y-1 grow-0">
                                 <div class="overflow-clip line-clamp-1">
                                     {#if chat.isGroup}
                                         {toTitleCase(chat.name ?? "Group Chat")}
