@@ -55,7 +55,7 @@ export const GET: RequestHandler = async ({ locals }) => {
             ...row,
             chat: row.chat ? {
                 ...row.chat,
-                lastMessage: normaliseMessageFromDatabase(row.chat.messages?.[0]) ?? null
+                lastMessage: row.chat.messages?.[0] ? normaliseMessageFromDatabase(row.chat.messages[0]) : null
             } : null
         };
     }));

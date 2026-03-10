@@ -294,7 +294,7 @@ test.describe("Chat page tests (/messages/chat)", () => {
 
     test.describe("Chat header", () => {
 
-        test("chat header shows info button (not email button)", async ({ page }) => {
+        test("chat header shows info button and action buttons", async ({ page }) => {
             await signin(page);
             await page.goto("/messages/chat");
 
@@ -318,9 +318,9 @@ test.describe("Chat page tests (/messages/chat)", () => {
             const infoButton = page.getByRole('button').filter({ hasText: 'info' });
             await expect(infoButton).toBeVisible();
 
-            // Should NOT show the email button
+            // DM chat header also shows the email button (to email the contact)
             const emailButton = page.getByRole('button').filter({ hasText: 'email' });
-            await expect(emailButton).not.toBeVisible();
+            await expect(emailButton).toBeVisible();
         });
 
         test("group chat header shows group name and info button", async ({ page }) => {
@@ -461,7 +461,7 @@ test.describe("Chat page tests (/messages/chat)", () => {
 
     test.describe("Sidebar display", () => {
 
-        test("sidebar shows group icon for group chats", async ({ page }) => {
+        test("sidebar shows avatar image for group chats", async ({ page }) => {
             await signin(page);
             await page.goto("/messages/chat");
 
@@ -487,13 +487,10 @@ test.describe("Chat page tests (/messages/chat)", () => {
 
             await page.waitForSelector('[placeholder="Type a message..."]', { timeout: 5000 });
 
-            // The sidebar should show a "group" material icon for the group chat
-            const groupIconInSidebar = page.locator('button.grow')
-                .filter({ hasText: groupName })
-                .locator('.material-symbols-outlined')
-                .filter({ hasText: 'group' });
-
-            await expect(groupIconInSidebar).toBeVisible();
+            // The sidebar should show an avatar image for the group chat
+            // (The UI uses /noprofile.png for group chats instead of a material icon)
+            const groupChatSidebarItem = page.locator('button.grow').filter({ hasText: groupName });
+            await expect(groupChatSidebarItem.locator('img[alt="avatar"]')).toBeVisible();
         });
 
         test("sidebar shows user avatar for DM chats", async ({ page }) => {
