@@ -530,15 +530,15 @@
                     <div class="relative">
                         <IconButton onclick={() => { showNewChatDropdown = !showNewChatDropdown; newChatSearch = ""; isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}><span class="material-symbols-outlined icons-fill">add</span></IconButton>
                         {#if showNewChatDropdown}
-                            <div class="absolute right-0 top-full mt-1 z-50 w-72 bg-gray-800 shadow-lg rounded-md overflow-hidden" transition:slide={{ duration: 150 }}>
+                            <div class="absolute right-0 top-full mt-1 z-50 w-72 bg-gray-800 shadow-2xl rounded-md overflow-hidden" transition:slide={{ duration: 150 }}>
                                 <div class="flex border-b border-gray-700">
                                     <button
                                         onclick={() => { isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}
-                                        class="flex-1 py-2 text-xs font-semibold {!isGroupChatMode ? 'bg-green-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                        class="flex-1 py-2 text-xs font-semibold {!isGroupChatMode ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
                                     >Direct Message</button>
                                     <button
                                         onclick={() => { isGroupChatMode = true; }}
-                                        class="flex-1 py-2 text-xs font-semibold {isGroupChatMode ? 'bg-green-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                        class="flex-1 py-2 text-xs font-semibold {isGroupChatMode ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
                                     >Group Chat</button>
                                 </div>
                                 <div class="p-2">
@@ -631,18 +631,18 @@
                         class="block grow w-full {chat.id === currentlySelectedChatId ? 'bg-neutral-500/50' : 'hover:bg-neutral-500/25 active:bg-neutral-500/50'} font-bold py-5 px-2 text-lg flex items-center justify-between gap-2 transition-all"
                     >
                         <div class="flex flex-row items-center gap-2">
-                            {#if chat.isGroup}
-                                <div class="h-10 w-10 px-0.5 rounded-full bg-gray-500 flex items-center justify-center shrink-0">
-                                    <span class="material-symbols-outlined text-gray-200" style="font-size: 26px;">group</span>
-                                </div>
-                            {:else}
-                                {#await data.users then users}
-                                    {@const sidebarOther = chat.participantIds.find((id) => id !== data.user.id)}
-                                    {@const sidebarUser = users.find((u) => u.id === sidebarOther)}
-                                    <img src={sidebarUser?.avatar || "/noprofile.png"} alt="avatar" class="h-10 w-10 px-0.5 rounded-full bg-gray-500 shrink-0 object-cover" />
-                                {/await}
-                            {/if}
-                            <div class="flex flex-col items-start justify-evenly text-left -space-y-1">
+                            <div class="shrink-0 px-2">
+                                {#if chat.isGroup}
+                                    <img src={"/noprofile.png"} alt="avatar" class="h-10 rounded-full aspect-square shrink-0 object-cover" />
+                                {:else}
+                                    {#await data.users then users}
+                                        {@const sidebarOther = chat.participantIds.find((id) => id !== data.user.id)}
+                                        {@const sidebarUser = users.find((u) => u.id === sidebarOther)}
+                                        <img src={sidebarUser?.avatar || "/noprofile.png"} alt="avatar" class="h-10 aspect-square rounded-full bg-gray-500 shrink-0 object-cover" />
+                                    {/await}
+                                {/if}
+                            </div>
+                            <div class="flex flex-col items-start justify-evenly text-left -space-y-0.5 grow-0">
                                 <div class="overflow-clip line-clamp-1">
                                     {#if chat.isGroup}
                                         {toTitleCase(chat.name ?? "Group Chat")}
@@ -700,13 +700,13 @@
 
                     {#snippet chatBubble(isMine, message, tail, stamp, reactionGroups, i)}
                         {@const msgAuthor = !isMine ? (chat.isGroup ? users.find(u => u.id === message.author) : user) : null}
-                        {@const bubbleBgColor = isMine ? '#16a34a' : (chat.isGroup ? getGroupMemberColorHex(message.author) : '#4b5563')}
+                        {@const bubbleBgColor = isMine ? 'inherit' : (chat.isGroup ? getGroupMemberColorHex(message.author) : 'inherit')}
                         <div class="{isMine ? 'self-end' : 'self-start'} max-w-1/2 flex flex-col {isMine ? 'items-end' : 'items-start'} gap-1 group" data-menu-container>
-                            {#if !isMine && chat.isGroup && (i === 0 || messages[chat.id][i-1]?.author !== message.author)}
+                            <!-- {#if !isMine && chat.isGroup && (i === 0 || messages[chat.id][i-1]?.author !== message.author)}
                                 <div class="text-xs font-semibold pl-9 pb-0.5" style="color: {getGroupMemberColorHex(message.author)};">
                                     {msgAuthor ? toTitleCase(`${msgAuthor.firstName} ${msgAuthor.lastName}`) : "Unknown"}
                                 </div>
-                            {/if}
+                            {/if} -->
                             <div class="flex items-end gap-2 relative">
                                 {#if isMine}
                                     <div class="relative inline-block self-center">
@@ -733,7 +733,7 @@
                                         <div class="w-7 h-7"></div>
                                     {/if}
                                 {/if}
-                                <div class="relative text-white p-3 shadow-md break-words rounded-md" style="background-color: {bubbleBgColor};">
+                                <div class="relative {isMine ? 'bg-green-600!' : 'bg-gray-600!'} text-white p-3 shadow-md break-words rounded-md" style="background-color: {bubbleBgColor};">
                                     <div
                                         class="absolute bg-gray-700 flex rounded-full {isMine ? 'flex-row' : 'flex-row-reverse'} items-center z-10 transition-all {openEmojiSelectorForMessage === message.id || reactionGroups.length > 0 ? 'opacity-100' : 'opacity-0'} group-hover:opacity-100"
                                         style="top: -14px; {isMine ? 'right' : 'left'}: calc(100% - 14px);"
@@ -786,7 +786,7 @@
                                     </div>
                                     {message.content}
                                     {#if tail}
-                                        <div class="absolute {isMine ? '-right-2' : '-left-2'} bottom-0 w-0 h-0 border-solid border-t-[15px] border-t-transparent" style="{isMine ? 'border-left: 15px solid #16a34a;' : `border-right: 15px solid ${bubbleBgColor};`}"></div>
+                                        <div class="absolute {isMine ? '-right-2' : '-left-2'} bottom-0 w-0 h-0 border-solid border-t-[15px] border-t-transparent {isMine ? 'border-l-[15px] border-l-green-600' : 'border-r-[15px] border-r-gray-600'}"></div>
                                     {/if}
                                     {#if message.edited}
                                         <div class="text-[0.625rem] text-white/70 italic pt-0.5 select-none">Edited</div>
@@ -801,7 +801,7 @@
                                 {/if}
                             </div>
                             {#if tail}
-                                <div class="text-[11px] {isMine ? 'text-white/80 pr-1' : 'text-gray-200/90 pl-1'}">{isMine ? 'You' : toTitleCase(msgAuthor?.firstName ?? '')} • {formatDate(stamp)}</div>
+                                <div class="text-[11px] {isMine ? 'text-white/80 pr-1' : 'text-gray-200/90 pl-1'}">{isMine ? 'You' : toTitleCase(msgAuthor?.firstName ?? 'Unknown user')} • {formatDate(stamp)}</div>
                             {/if}
                         </div>
                     {/snippet}
@@ -815,6 +815,9 @@
                                     <IconButton onclick={() => (window.location.href = `tel:${user.phone}`)}>
                                         <span class="material-symbols-outlined icons-fill">phone</span>
                                     </IconButton>
+                                {/if}
+                                {#if !chat.isGroup}
+                                    <IconButton onclick={() => (window.location.href = `mailto:${user.email}`)}><span class="material-symbols-outlined icons-fill">email</span></IconButton>
                                 {/if}
                                 <IconButton onclick={() => null}><span class="material-symbols-outlined icons-fill">info</span></IconButton>
                             </div>
