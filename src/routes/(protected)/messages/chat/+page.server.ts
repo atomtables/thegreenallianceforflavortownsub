@@ -19,7 +19,8 @@ export const load = async ({ locals, fetch, depends }) => {
                 const allowed = (data.allowedUsers || []) as User[];
                 const involved = Object.values(data.users || {}) as User[];
                 const map = new Map<string, User>();
-                for (const u of [...allowed, ...involved]) map.set(u.id, u);
+                for (const u of allowed) map.set(u.id, u);
+                for (const u of involved) map.set(u.id, u);
                 return Array.from(map.values());
             }),
         // The list of users this user is allowed to create new chats with,
