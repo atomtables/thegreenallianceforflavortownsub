@@ -112,12 +112,24 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
     }
 
+    // Build the list of users this user is allowed to message,
+    // filtered by their messaging permissions (message, message_leads, message_anyone).
+    // This is provided so that users without the "users" permission (user list access)
+    // can still see who they are allowed to start chats with.
+    const allDbUsers = await db.query.users.findMany()
+        .then(res => res.map(cleanUserFromDatabase));
+    const allowedUsers = allDbUsers
+        .filter(u => u.id !== userId)
+        .filter(u => checkIfUserCanMessage(locals.user!, u));
+
     return new Response(JSON.stringify({
         chats: userChats,
         // list of all users that can be linked to participantId
         // because some users may not have access to the user lists if they don't
         // have permissions.
-        users: usersInvolved
+        users: usersInvolved,
+        // list of all users this user is allowed to message
+        allowedUsers: allowedUsers
     }), { status: 200 });
 }
 

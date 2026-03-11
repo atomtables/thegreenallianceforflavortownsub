@@ -607,7 +607,7 @@
                                     </div>
                                 {/if}
                                 <div class="max-h-60 overflow-y-auto">
-                                    {#await data.users}
+                                    {#await data.allowedUsers}
                                         <div class="flex justify-center p-3"><Spinner /></div>
                                     {:then users}
                                         {@const filtered = users.filter((u) => u.id !== data.user.id && (newChatSearch === "" || `${u.firstName} ${u.lastName}`.toLowerCase().includes(newChatSearch.toLowerCase())))}
