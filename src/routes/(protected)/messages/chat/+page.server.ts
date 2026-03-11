@@ -25,6 +25,6 @@ export const load = async ({ locals, fetch, depends }) => {
             }),
         // The list of users this user is allowed to create new chats with,
         // always sourced from the messages endpoint (permission-filtered).
-        allowedUsers: messagesData.then((data) => data.allowedUsers as User[]),
+        allowedUsers: messagesData.then((data) => (data.allowedUsers || []) as User[]),
     };
 }
