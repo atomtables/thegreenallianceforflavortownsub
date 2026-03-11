@@ -7,7 +7,7 @@ import { db } from "$lib/server/db/index";
 import { normaliseChatFromDatabase, normaliseMessageFromDatabase, type Chat, type Message } from "$lib/types/messages";
 import { RequiresPermissions } from "$lib/functions/requirePermissions";
 import { Permission, Role, type User } from "$lib/types/types";
-import { and, count, desc, eq, inArray, gt, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, gt, ne, notInArray } from "drizzle-orm";
 import { cleanUserFromDatabase } from "$lib/server/auth";
 import { _clients as clients } from "./stream/+server";
 import { _invalidateParticipantCache as invalidateParticipantCache } from "./[chatId]/+server";
@@ -116,11 +116,25 @@ export const GET: RequestHandler = async ({ locals }) => {
     // filtered by their messaging permissions (message, message_leads, message_anyone).
     // This is provided so that users without the "users" permission (user list access)
     // can still see who they are allowed to start chats with.
-    const allDbUsers = await db.query.users.findMany()
-        .then(res => res.map(cleanUserFromDatabase));
-    const allowedUsers = allDbUsers
-        .filter(u => u.id !== userId)
-        .filter(u => checkIfUserCanMessage(locals.user!, u));
+    // Filter at the database level by excluding roles the user can't message.
+    // Permission hierarchy: message_anyone grants access to members (Role.member),
+    // message_leads grants access to leads (Role.lead). Without these permissions,
+    // those roles are excluded. All other roles (captain, mentor, coach, admin) are
+    // messageable by anyone with the base "message" permission.
+    const excludedRoles: Role[] = [];
+    if (!locals.user!.permissions.includes(Permission.message_anyone)) {
+        excludedRoles.push(Role.member);
+    }
+    if (!locals.user!.permissions.includes(Permission.message_leads)) {
+        excludedRoles.push(Role.lead);
+    }
+    const allowedUsersConditions = [ne(users.id, userId)];
+    if (excludedRoles.length > 0) {
+        allowedUsersConditions.push(notInArray(users.role, excludedRoles));
+    }
+    const allowedUsers = await db.query.users.findMany({
+        where: and(...allowedUsersConditions)
+    }).then(res => res.map(cleanUserFromDatabase));
 
     return new Response(JSON.stringify({
         chats: userChats,
