@@ -28,7 +28,7 @@
     <div class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
         {#each toasts as toast (toast.id)}
             <button
-                class="pointer-events-auto flex items-center gap-2 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm text-sm animate-slide-in cursor-pointer hover:bg-gray-700 transition-colors"
+                class="pointer-events-auto flex items-center gap-2 bg-gray-800 text-white px-4 py-3 shadow-lg max-w-sm text-sm animate-slide-in cursor-pointer hover:bg-gray-700 transition-colors"
                 onclick={() => dismissToast(toast.id)}
             >
                 {#if toast.icon}

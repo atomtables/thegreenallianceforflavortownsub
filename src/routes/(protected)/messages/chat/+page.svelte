@@ -577,15 +577,15 @@
                     <div class="relative">
                         <IconButton onclick={() => { showNewChatDropdown = !showNewChatDropdown; newChatSearch = ""; isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}><span class="material-symbols-outlined icons-fill">add</span></IconButton>
                         {#if showNewChatDropdown}
-                            <div class="absolute right-0 top-full mt-1 z-50 w-72 bg-gray-800 shadow-2xl rounded-md overflow-hidden" transition:slide={{ duration: 150 }}>
-                                <div class="flex border-b border-gray-700">
+                            <div class="absolute left-0 top-full mt-1 z-50 w-72 bg-gray-800 shadow-2xl overflow-hidden" transition:slide={{ duration: 150 }}>
+                                <div class="flex border-b border-gray-700 bg-green-800">
                                     <button
                                         onclick={() => { isGroupChatMode = false; selectedGroupMembers = []; groupChatName = ""; }}
-                                        class="flex-1 py-2 text-xs font-semibold {!isGroupChatMode ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                        class="p-2 text-xs font-semibold {!isGroupChatMode ? ' hover:bg-neutral-400/40 bg-neutral-400/40 text-white border-b-white border-b-2' : 'text-gray-300 hover:text-white  hover:bg-neutral-400/40'} transition-colors"
                                     >Direct Message</button>
                                     <button
                                         onclick={() => { isGroupChatMode = true; }}
-                                        class="flex-1 py-2 text-xs font-semibold {isGroupChatMode ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'} transition-colors"
+                                        class="p-2 text-xs font-semibold {isGroupChatMode ? ' hover:bg-neutral-400/40 bg-neutral-400/40 text-white border-b-white border-b-2' : 'text-gray-300 hover:text-white  hover:bg-neutral-400/40'} transition-colors"
                                     >Group Chat</button>
                                 </div>
                                 <div class="p-2">
