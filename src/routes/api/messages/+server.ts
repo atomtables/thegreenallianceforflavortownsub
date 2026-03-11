@@ -7,7 +7,7 @@ import { db } from "$lib/server/db/index";
 import { normaliseChatFromDatabase, normaliseMessageFromDatabase, type Chat, type Message } from "$lib/types/messages";
 import { RequiresPermissions } from "$lib/functions/requirePermissions";
 import { Permission, Role, type User } from "$lib/types/types";
-import { and, count, desc, eq, inArray, gt, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, gt, ne, notInArray } from "drizzle-orm";
 import { cleanUserFromDatabase } from "$lib/server/auth";
 import { _clients as clients } from "./stream/+server";
 import { _invalidateParticipantCache as invalidateParticipantCache } from "./[chatId]/+server";
@@ -112,23 +112,53 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
     }
 
+    // Build the list of users this user is allowed to message,
+    // filtered by their messaging permissions (message, message_leads, message_anyone).
+    // This is provided so that users without the "users" permission (user list access)
+    // can still see who they are allowed to start chats with.
+    // Filter at the database level by excluding roles the user can't message.
+    const excludedRoles = getExcludedRoles(locals.user!);
+    const allowedUsersConditions = [ne(users.id, userId)];
+    if (excludedRoles.length > 0) {
+        allowedUsersConditions.push(notInArray(users.role, excludedRoles));
+    }
+    const allowedUsers = await db.query.users.findMany({
+        where: and(...allowedUsersConditions)
+    }).then(res => res.map(cleanUserFromDatabase));
+
     return new Response(JSON.stringify({
         chats: userChats,
         // list of all users that can be linked to participantId
         // because some users may not have access to the user lists if they don't
         // have permissions.
-        users: usersInvolved
+        users: usersInvolved,
+        // list of all users this user is allowed to message
+        allowedUsers: allowedUsers
     }), { status: 200 });
 }
 
+// Returns the list of roles the given user is NOT allowed to message,
+// based on their permissions. Used both for SQL-level filtering (allowedUsers query)
+// and for per-user validation (checkIfUserCanMessage).
+// Permission hierarchy: message_anyone grants access to members (Role.member),
+// message_leads grants access to leads (Role.lead). Without these permissions,
+// those roles are excluded. All other roles (captain, mentor, coach, admin) are
+// messageable by anyone with the base "message" permission.
+const getExcludedRoles = (user: User): Role[] => {
+    const excluded: Role[] = [];
+    if (!user.permissions.includes(Permission.message_anyone)) {
+        excluded.push(Role.member);
+    }
+    if (!user.permissions.includes(Permission.message_leads)) {
+        excluded.push(Role.lead);
+    }
+    return excluded;
+}
+
 const checkIfUserCanMessage = (user: User, target: User): boolean => {
-    if (target.role === Role.member && !user.permissions.includes(Permission.message_anyone))
-        return false;
-    if (target.role === Role.lead && !user.permissions.includes(Permission.message_leads))
-        return false;
     if (!user.permissions.includes(Permission.message))
         return false;
-    return true;
+    return !getExcludedRoles(user).includes(target.role);
 }
 
 // Create a chat with specified participant IDs
