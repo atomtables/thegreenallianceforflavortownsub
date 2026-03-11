@@ -77,7 +77,6 @@ export function normaliseChatFromDatabase(res: {
 }
 
 export function normaliseMessageFromDatabase(res: typeof table.messages.$inferSelect & { reactions?: (typeof table.messagesReactions.$inferSelect)[] }): Message {
-    console.log("reactions", res.reactions);
     const messageData: Message = {
         id: res.id,
         author: res.author,
