@@ -380,7 +380,12 @@
                 container.scrollTop = container.scrollHeight;
             }
         } else {
-            console.error("Failed to send message:", res.statusText);
+            const errData = await res.json().catch(() => ({}));
+            if (errData.badWords) {
+                await alert("Message Blocked", errData.error || "Your message contains words that are not allowed.");
+            } else {
+                console.error("Failed to send message:", res.statusText);
+            }
         }
     };
     const editMessage = async (message: Message) => {
@@ -441,6 +446,23 @@
             }
         } else {
             console.error("Failed to delete message:", res.statusText);
+        }
+        openMenuForMessage = null;
+    };
+    const reportMessage = async (message: Message) => {
+        const ok = await confirm("Report Message", "Are you sure you want to report this message? This will notify administrators for review.");
+        if (!ok) return;
+
+        const res = await fetch("/api/messages/admin/reports", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageId: message.id, reason: "Reported by user" }),
+        });
+
+        if (res.ok) {
+            showToast("Message reported successfully", { icon: "check" });
+        } else {
+            showToast("Failed to report message");
         }
         openMenuForMessage = null;
     };
@@ -770,6 +792,7 @@
                                             <div class="absolute left-2 z-50 {i === messages[chat.id].length - 1 && 'bottom-full'} py-1 min-w-max overflow-hidden bg-gray-800 shadow-md rounded-md rounded-tl-none" transition:slide={{ duration: 150 }}>
                                                 <button class="block w-full text-left px-4 py-2 text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors" onclick={() => editMessage(message)}> Edit </button>
                                                 <button class="block w-full text-left px-4 py-2 text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors" onclick={() => deleteMessage(message)}> Delete </button>
+                                                <button class="block w-full text-left px-4 py-2 text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors text-red-400" onclick={() => reportMessage(message)}> Report </button>
                                             </div>
                                         {/if}
                                     </div>
@@ -845,6 +868,23 @@
                                     {:else}
                                         <div class="w-7 h-7"></div>
                                     {/if}
+                                {:else}
+                                    <div class="relative inline-block self-center">
+                                        <IconButton
+                                            onclick={() => {
+                                                openMenuForMessage = openMenuForMessage === message.id ? null : message.id;
+                                            }}
+                                            transparent
+                                            class="self-center !p-0 grid place-items-center [&]:opacity-0 {openMenuForMessage === message.id ? 'opacity-100! bg-neutral-400/50 hover:bg-neutral-400/50' : ''} group-hover:opacity-100! transition duration-150 ease-out"
+                                        >
+                                            more_vert
+                                        </IconButton>
+                                        {#if openMenuForMessage === message.id}
+                                            <div class="absolute right-2 z-50 {i === messages[chat.id].length - 1 && 'bottom-full'} py-1 min-w-max overflow-hidden bg-gray-800 shadow-md rounded-md rounded-tr-none" transition:slide={{ duration: 150 }}>
+                                                <button class="block w-full text-left px-4 py-2 text-sm hover:bg-neutral-500/40 active:bg-neutral-400/40 transition-colors text-red-400" onclick={() => reportMessage(message)}> Report </button>
+                                            </div>
+                                        {/if}
+                                    </div>
                                 {/if}
                             </div>
                             {#if tail}

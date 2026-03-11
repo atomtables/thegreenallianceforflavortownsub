@@ -127,3 +127,42 @@ export const messagesReactionsRelations = relations(messagesReactions, ({ one })
         references: [users.id],
     }),
 }));
+
+export const messageReports = pgTable("message_reports", {
+    id: varchar("id", { length: 21 }).primaryKey().$default(() => Snowflake()),
+    messageId: varchar("message_id", { length: 21 }).notNull().references(() => messages.id, { onDelete: 'cascade' }),
+    messageAuthorId: varchar("message_author_id", { length: 36 }).notNull().references(() => users.id),
+    reporterId: varchar("reporter_id", { length: 36 }).references(() => users.id),
+    reason: text("reason").notNull().default(""),
+    status: text("status").notNull().default("open"),
+    reportedAt: timestamp("reported_at", { mode: 'date' }).defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at", { mode: 'date' }),
+    resolvedBy: varchar("resolved_by", { length: 36 }).references(() => users.id),
+    source: text("source").notNull().default("user"),
+}, (table) => [
+    index("message_reports_message_idx").on(table.messageId),
+    index("message_reports_author_idx").on(table.messageAuthorId),
+    index("message_reports_reporter_idx").on(table.reporterId),
+]);
+
+export const messageReportsRelations = relations(messageReports, ({ one }) => ({
+    message: one(messages, {
+        fields: [messageReports.messageId],
+        references: [messages.id],
+    }),
+    messageAuthor: one(users, {
+        fields: [messageReports.messageAuthorId],
+        references: [users.id],
+        relationName: "reportedAuthor",
+    }),
+    reporter: one(users, {
+        fields: [messageReports.reporterId],
+        references: [users.id],
+        relationName: "reportReporter",
+    }),
+    resolver: one(users, {
+        fields: [messageReports.resolvedBy],
+        references: [users.id],
+        relationName: "reportResolver",
+    }),
+}));

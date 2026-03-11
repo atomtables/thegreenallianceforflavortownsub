@@ -47,6 +47,7 @@ export function cleanUserFromDatabase(user: typeof table.users.$inferSelect): Us
 		role: user.role,
 		permissions: user.permissions ?? [],
 		subteam: user.subteam,
+		tosAgreedAt: user.tosAgreedAt instanceof Date ? user.tosAgreedAt.getTime() : user.tosAgreedAt ? Number(user.tosAgreedAt) : null,
 	};
 }
 
