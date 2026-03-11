@@ -4,6 +4,8 @@
     import EmojiPicker from "$lib/components/EmojiPicker.svelte";
     import IconButton from "$lib/components/IconButton.svelte";
     import Spinner from "$lib/components/Spinner.svelte";
+    import Toast, { showToast } from "$lib/components/Toast.svelte";
+    import type { User } from "$lib/types/types";
     import { snowflakeToDate } from "$lib/functions/Snowflake.js";
     import { formatDate, formatDayLabel, isTailMessage, toTitleCase } from "$lib/functions/chatHelpers";
     import type { Chat, Message } from "$lib/types/messages";
@@ -78,6 +80,15 @@
     // This is for the divider between unread messages (because it wouldn't
     // make sense for the divider to disappear the second a new message arrives)
     let stickyUnreadBoundary: Record<string, string | null> = $state({});
+    // Resolved users list for use in SSE notification handlers
+    let resolvedUsers: User[] = $state([]);
+
+    const sendBrowserNotification = (title: string, body: string, tag?: string) => {
+        if (document.hasFocus()) return;
+        if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+        const n = new Notification(title, { body, tag, icon: "/favicon.png" });
+        n.onclick = () => { window.focus(); n.close(); };
+    };
 
     // Our main SSE connection function to connect to the chat stream
     // and handle reconnections and events.
@@ -136,9 +147,20 @@
                     updateLastReadForChat(msg.chatId, msg.id);
                 } else {
                     chat!.readReceipts.count += 1;
+                    const sender = resolvedUsers.find((u) => u.id === msg.author);
+                    const senderName = sender ? toTitleCase(`${sender.firstName} ${sender.lastName}`) : "Someone";
+                    const preview = msg.content.length > 50 ? msg.content.slice(0, 50) + "…" : msg.content;
+                    showToast(`${senderName}: ${preview}`, { icon: "chat" });
+                    sendBrowserNotification(senderName, preview, `msg-${msg.id}`);
                 }
             } else {
                 chat!.readReceipts.count += 1;
+                const sender = resolvedUsers.find((u) => u.id === msg.author);
+                const senderName = sender ? toTitleCase(`${sender.firstName} ${sender.lastName}`) : "Someone";
+                const chatName = chat?.isGroup ? (chat.name ?? "Group Chat") : senderName;
+                const preview = msg.content.length > 50 ? msg.content.slice(0, 50) + "…" : msg.content;
+                showToast(`${chatName}: ${preview}`, { icon: "chat" });
+                sendBrowserNotification(chatName, preview, `msg-${msg.id}`);
             }
         });
         source.addEventListener("session", logEvent("session"));
@@ -172,10 +194,20 @@
             console.log("[SSE:message-reacted]", ev.data);
             const { messageId, chatId, reactions } = JSON.parse(ev.data);
             if (messages[chatId]) {
+                const originalMsg = messages[chatId].find((v) => v.id === messageId);
                 messages[chatId] = messages[chatId].map((v) => {
                     if (v.id !== messageId) return v;
                     return { ...v, reactions };
                 });
+                if (originalMsg?.author === data.user.id) {
+                    const newReactorIds = Object.keys(reactions).filter((uid) => uid !== data.user.id && !Object.keys(originalMsg.reactions ?? {}).includes(uid));
+                    for (const uid of newReactorIds) {
+                        const reactor = resolvedUsers.find((u) => u.id === uid);
+                        const reactorName = reactor ? toTitleCase(`${reactor.firstName} ${reactor.lastName}`) : "Someone";
+                        showToast(`${reactorName} reacted ${reactions[uid]} to your message`, { icon: "mood" });
+                        sendBrowserNotification(reactorName, `Reacted ${reactions[uid]} to your message`, `react-${messageId}-${uid}`);
+                    }
+                }
             }
         });
         source.addEventListener("chat-created", async (ev) => {
@@ -183,6 +215,15 @@
             const { chat } = JSON.parse(ev.data);
             if (!chats.find((c) => c.id === chat.id)) {
                 chats = [{ ...chat, readReceipts: { messageId: null, count: 0 } }, ...chats];
+                const chatName = chat.name ?? chat.participantIds
+                    ?.filter((id: string) => id !== data.user.id)
+                    .map((id: string) => {
+                        const u = resolvedUsers.find((u) => u.id === id);
+                        return u ? toTitleCase(`${u.firstName} ${u.lastName}`) : "Unknown";
+                    })
+                    .join(", ") ?? "New Chat";
+                showToast(`New chat: ${chatName}`, { icon: "group" });
+                sendBrowserNotification("New Chat", chatName, `chat-${chat.id}`);
             }
         });
     };
@@ -254,7 +295,10 @@
     // to come in and connect via SSE
     onMount(async () => {
         chats = await data.chats;
-        // currentlySelectedChatId = chats[0]?.id || null;
+        resolvedUsers = await data.users;
+        if (typeof Notification !== "undefined" && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
         connectToChat();
     });
 
@@ -359,17 +403,20 @@
         }
         openMenuForMessage = null;
     };
+    const escapeHtml = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const deleteMessage = async (message: Message) => {
         const stamp = snowflakeToDate(message.id);
+        const safeContent = escapeHtml(message.content);
+        const safeAvatar = escapeHtml(data.user?.avatar || "/noprofile.png");
         let yes = await confirm("Delete Message", "Are you sure you want to delete this message?", {
             children: `
                     <div class="self-end max-w-xs flex flex-col items-end gap-1 group">
                         <div class="flex items-end gap-2 relative">
                             <div class="relative bg-green-600 text-white p-3 shadow-md break-words rounded-md">
-                                ${message.content}
+                                ${safeContent}
                                 <div class="absolute -right-2 bottom-0 w-0 h-0 border-solid border-t-[15px] border-t-transparent border-l-[15px] border-l-green-600"></div>
                             </div>
-                          2xs  <img src=${data.user?.avatar || "/noprofile.png"} alt="avatar" class="w-7 h-7 roundeext-xsd-full bg-gray-500 mb-1" />
+                            <img src="${safeAvatar}" alt="avatar" class="w-7 h-7 rounded-full bg-gray-500 mb-1" />
                         </div>
                         <div class="text-[11px] text-white/80 pr-1">You • ${formatDate(stamp)}</div>
                     </div>
@@ -642,7 +689,7 @@
                                     {/await}
                                 {/if}
                             </div>
-                            <div class="flex flex-col items-start justify-evenly text-left -space-y-1 grow-0">
+                            <div class="flex flex-col items-start justify-evenly text-left -space-y-0.5 grow-0">
                                 <div class="overflow-clip line-clamp-1">
                                     {#if chat.isGroup}
                                         {toTitleCase(chat.name ?? "Group Chat")}
@@ -931,3 +978,5 @@
         </div>
     </div>
 </div>
+
+<Toast />

@@ -10,6 +10,7 @@ import { Permission, Role, type User } from "$lib/types/types";
 import { and, count, desc, eq, inArray, gt, ne } from "drizzle-orm";
 import { cleanUserFromDatabase } from "$lib/server/auth";
 import { _clients as clients } from "./stream/+server";
+import { _invalidateParticipantCache as invalidateParticipantCache } from "./[chatId]/+server";
 
 // Retrieve all chats for a given user.
 export const GET: RequestHandler = async ({ locals }) => {
@@ -86,7 +87,7 @@ export const GET: RequestHandler = async ({ locals }) => {
                         eq(messages.chatId, chat.id),
                         gt(messages.id, chat.readReceipts[0]?.messageId || "0"),
                         ne(messages.deleted, true)
-                    )).then(res => res[0].value) & 63) || 0,
+                    )).then(res => res[0].value)) || 0,
                 }
             });
         }
@@ -228,6 +229,8 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
                 userId: userId,
             }))
         );
+
+        invalidateParticipantCache(chatInsert.id);
 
         newChat = {
             id: chatInsert.id,
