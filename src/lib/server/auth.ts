@@ -34,7 +34,7 @@ export async function createSession(token: string, userId: string) {
 export function cleanUserFromDatabase(user: typeof table.users.$inferSelect): User {
 	return {
 		id: user.id,
-		age: user.age || null,
+		age: user.age || 0,
 		username: user.username,
 		passwordHash: null,
 		createdAt: user.createdAt instanceof Date ? user.createdAt.getTime() : Number(user.createdAt),
@@ -91,20 +91,14 @@ export async function invalidateSession(sessionId: string) {
 	await db.delete(table.session).where(eq(table.session.id, sessionId));
 }
 
-/**
- * @param {import("@sveltejs/kit").RequestEvent} event
- * @param {string} token
- * @param {Date} expiresAt
- */
-export function setSessionTokenCookie(event, token, expiresAt) {
+export function setSessionTokenCookie(event: RequestEvent, token: string, expiresAt: Date) {
 	event.cookies.set(sessionCookieName, token, {
 		expires: expiresAt,
 		path: '/'
 	});
 }
 
-/** @param {import("@sveltejs/kit").RequestEvent} event */
-export function deleteSessionTokenCookie(event) {
+export function deleteSessionTokenCookie(event: RequestEvent) {
 	event.cookies.delete(sessionCookieName, {
 		path: '/'
 	});
@@ -130,16 +124,16 @@ function validatePassword(password: string) {
 class ValidationError extends Error {
 	public error: string;
 
-	constructor(message) {
+	constructor(message: any) {
 		super("A validation error occurred");
 		this.name = 'ValidationError';
 		this.error = message;
 	}
 }
 
-export let validateLogin = async (formData) => {
-	const username = formData.get('username');
-	const password = formData.get('password');
+export let validateLogin = async (formData: FormData) => {
+	const username = formData.get('username')?.toString().toLowerCase().trim() ?? "";
+	const password = formData.get('password')?.toString() ?? "";
 
 	if (!validateUsername(username)) {
 		throw new ValidationError({ error: "username", message: 'Invalid username (min 3, max 31 characters, alphanumeric only)' })
@@ -181,34 +175,26 @@ export let validateLogin = async (formData) => {
 	return existingUser;
 }
 
-const normalizeData = data => {
+const normalizeData = (data: any) => {
     return data?.toString().toLowerCase().trim();
 }
 
-const validateUnique = async (type, val) => {
-	const existingUser = await db.query.users.findFirst({
-		where: eq(table.users[type], val)
-	});
-
-	return existingUser;
-}
-
-const validateName = name => {
+const validateName = (name: string) => {
 	return typeof name === "string" &&
 		/^[a-z]+$/.test(name);
 }
 
-const validatePhone = phone => {
+const validatePhone = (phone: string) => {
 	return true //typeof phone === "string" &&
 		///^[0-9]{10}$/.test(phone);
 }
 
-const validateAge = age => {
+const validateAge = (age: string) => {
 	// age can't be null or zero
 	return age && !isNaN(parseInt(age));
 }
 
-export const validateRegister = async (formData) => {
+export const validateRegister = async (formData: FormData) => {
 	const username = normalizeData(formData.get("username"));
 	const password = formData.get("password")?.toString();
 	const confirmation = formData.get("confirmation")?.toString();
@@ -220,12 +206,12 @@ export const validateRegister = async (formData) => {
 	const joinCode = normalizeData(formData.get("jcode")).toUpperCase();
 
 	// address info
-	const houseNumber = parseInt(formData.get("addnum"))
-	const addressLine1 = parseInt(formData.get("addline1"))
-	const addressLine2 = parseInt(formData.get("addline2"))
-	const city = parseInt(formData.get("addcity"))
-	const state = parseInt(formData.get("addstate"))
-	const zip = parseInt(formData.get("addzip"))
+	const houseNumber = parseInt(formData.get("addnum")?.toString() ?? "0");
+	const addressLine1 = parseInt(formData.get("addline1")?.toString() ?? "0");
+	const addressLine2 = parseInt(formData.get("addline2")?.toString() ?? "0");
+	const city = parseInt(formData.get("addcity")?.toString() ?? "0");
+	const state = parseInt(formData.get("addstate")?.toString() ?? "0");
+	const zip = parseInt(formData.get("addzip")?.toString() ?? "0");
 
 	if (joinCode === null || joinCode === "" || joinCode === undefined) {
 		redirect(303, "/account/signup")
@@ -243,10 +229,10 @@ export const validateRegister = async (formData) => {
 	if (!validateUsername(username)) {
 		throw new Error("USERNAME_WRONG");
 	}
-	if (password !== confirmation || !validatePassword(password)) {
+	if (password !== confirmation || !validatePassword(password ?? "")) {
 		throw new Error("PASSWORD_WRONG");
 	}
-	const passwordHash = await hash(password, {
+	const passwordHash = await hash(password!, {
 		// recommended minimum parameters
 		memoryCost: 19456,
 		timeCost: 2,
@@ -286,7 +272,7 @@ export const validateRegister = async (formData) => {
 	return id;
 }
 
-const takeUniqueOrThrow = values => {
+const takeUniqueOrThrow = (values: any[]) => {
 	if (values.length !== 1) throw new Error("Found non unique or inexistent value")
 	return values[0]
 }

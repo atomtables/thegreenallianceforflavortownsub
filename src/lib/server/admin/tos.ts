@@ -1,11 +1,9 @@
 // Terms of Service configuration
 // When this date is updated, all users will be required to re-agree to the TOS.
-export const TOS_LAST_UPDATED = new Date("2026-03-01T00:00:00Z");
+export const TOS_LAST_UPDATED = new Date("2026-03-01T12:00:00Z");
 
 export const TOS_CONTENT = `
 # Terms of Service
-
-**Last Updated: March 1, 2026**
 
 By using The Green Alliance platform ("the Platform"), you agree to the following terms and conditions. If you do not agree, you may not use the Platform.
 
