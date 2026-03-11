@@ -20,6 +20,6 @@
         {data.tosContent}
     </div>
     <div class="flex justify-end">
-        <Button onclick={agreeTos}>I Agree</Button>
+        <Button onclick={() => void agreeTos()}>I Agree</Button>
     </div>
 </div>

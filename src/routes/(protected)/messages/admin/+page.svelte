@@ -301,7 +301,7 @@
                     <option value="resolved">Resolved</option>
                     <option value="dismissed">Dismissed</option>
                 </select>
-                <Button onclick={loadReports}>
+                <Button onclick={() => void loadReports()}>
                     <span class="material-symbols-outlined text-sm">refresh</span>
                     Refresh
                 </Button>
@@ -342,14 +342,14 @@
                         </div>
                         <div class="flex gap-2">
                             {#if report.status === 'open'}
-                                <Button onclick={() => updateReportStatus(report.id, 'reviewed')}>Mark Reviewed</Button>
-                                <Button onclick={() => updateReportStatus(report.id, 'resolved')}>Resolve</Button>
-                                <Button onclick={() => updateReportStatus(report.id, 'dismissed')}>Dismiss</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'reviewed')}>Mark Reviewed</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'resolved')}>Resolve</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'dismissed')}>Dismiss</Button>
                             {:else if report.status === 'reviewed'}
-                                <Button onclick={() => updateReportStatus(report.id, 'resolved')}>Resolve</Button>
-                                <Button onclick={() => updateReportStatus(report.id, 'dismissed')}>Dismiss</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'resolved')}>Resolve</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'dismissed')}>Dismiss</Button>
                             {:else}
-                                <Button onclick={() => updateReportStatus(report.id, 'open')}>Reopen</Button>
+                                <Button onclick={() => void updateReportStatus(report.id, 'open')}>Reopen</Button>
                             {/if}
                         </div>
                     </div>
@@ -395,7 +395,7 @@
                 <p class="text-sm text-neutral-400 mb-4">No words configured.</p>
             {/if}
 
-            <Button onclick={saveBadWordsConfig}>Save Configuration</Button>
+            <Button onclick={() => void saveBadWordsConfig()}>Save Configuration</Button>
         </div>
     </div>
 </div>
@@ -473,7 +473,7 @@
             </div>
         </div>
         <div class="flex gap-2">
-            <Button onclick={loadMessages}>
+            <Button onclick={() => void loadMessages()}>
                 <span class="material-symbols-outlined text-sm">search</span>
                 Search
             </Button>
@@ -495,11 +495,11 @@
             <span class="material-symbols-outlined text-sm">download</span>
             Export Plaintext
         </Button>
-        <Button onclick={() => massDelete(false)} transparent>
+        <Button onclick={() => void massDelete(false)} transparent>
             <span class="material-symbols-outlined text-sm">delete</span>
             Mark Selected Deleted
         </Button>
-        <Button onclick={() => massDelete(true)} transparent>
+        <Button onclick={() => void massDelete(true)} transparent>
             <span class="material-symbols-outlined text-sm">delete_forever</span>
             Permanently Delete Selected
         </Button>
@@ -548,12 +548,12 @@
 
         <!-- Pagination -->
         <div class="flex justify-center gap-2 mt-4">
-            <Button disabled={messagesPage <= 1} onclick={() => { messagesPage--; loadMessages(); }}>
+            <Button disabled={messagesPage <= 1} onclick={() => { messagesPage--; void loadMessages(); }}>
                 <span class="material-symbols-outlined text-sm">chevron_left</span>
                 Previous
             </Button>
             <span class="flex items-center text-sm text-neutral-400">Page {messagesPage}</span>
-            <Button disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; loadMessages(); }}>
+            <Button disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; void loadMessages(); }}>
                 Next
                 <span class="material-symbols-outlined text-sm">chevron_right</span>
             </Button>
@@ -562,10 +562,12 @@
 
     <!-- Edit History Modal -->
     {#if viewingEditHistory}
-        <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" role="dialog" aria-label="Edit history"
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" role="dialog" aria-label="Edit history" tabindex="-1"
             onclick={() => viewingEditHistory = null}
             onkeydown={(e) => { if (e.key === 'Escape') viewingEditHistory = null; }}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div class="bg-gray-800 border-2 border-gray-600 p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
                 role="document"
                 onclick={(e) => e.stopPropagation()}>
@@ -613,7 +615,7 @@
         <!-- Chat List -->
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold">All Chats</h2>
-            <Button onclick={loadChats}>
+            <Button onclick={() => void loadChats()}>
                 <span class="material-symbols-outlined text-sm">refresh</span>
                 {adminChats.length > 0 ? 'Refresh' : 'Load Chats'}
             </Button>

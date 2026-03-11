@@ -109,7 +109,7 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
         await db.delete(messages).where(inArray(messages.id, body.messageIds));
     } else {
         await db.update(messages)
-            .set({ deleted: true })
+            .set({ deleted: true } as typeof messages.$inferSelect)
             .where(inArray(messages.id, body.messageIds));
     }
 

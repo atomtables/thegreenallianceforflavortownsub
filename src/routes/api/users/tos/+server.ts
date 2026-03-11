@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ locals }) => {
     }
 
     await db.update(users)
-        .set({ tosAgreedAt: new Date() })
+        .set({ tosAgreedAt: new Date() } as typeof users.$inferSelect)
         .where(eq(users.id, locals.user.id));
 
     return new Response(JSON.stringify({ success: true }), { status: 200 });

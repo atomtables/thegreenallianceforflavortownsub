@@ -123,7 +123,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         reporterId: locals.user.id,
         reason: body.reason || "",
         source: "user",
-    });
+    } as typeof messageReports.$inferInsert);
 
     return new Response(JSON.stringify({ success: true }), { status: 201 });
 };
