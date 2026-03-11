@@ -89,7 +89,7 @@
         const res = await fetch(`/api/messages/admin/chats?chatId=${msg.chatId}&limit=20`);
         if (res.ok) {
             const data = await res.json();
-            chatContextMessages = data.messages.reverse();
+            chatContextMessages = data.messages.toReversed();
         }
         chatContextLoading = false;
     };
@@ -267,7 +267,7 @@
         const res = await fetch(`/api/messages/admin/chats?chatId=${chatId}&page=1&limit=50`);
         if (res.ok) {
             const data = await res.json();
-            chatMessages = data.messages.reverse();
+            chatMessages = data.messages.toReversed();
             chatHasMore = data.hasMore;
         }
         chatMessagesLoading = false;
@@ -280,7 +280,7 @@
         const res = await fetch(`/api/messages/admin/chats?chatId=${selectedChatId}&page=${chatMessagesPage}&limit=50`);
         if (res.ok) {
             const data = await res.json();
-            chatMessages = [...data.messages.reverse(), ...chatMessages];
+            chatMessages = [...data.messages.toReversed(), ...chatMessages];
             chatHasMore = data.hasMore;
         }
         chatLoadingMore = false;
