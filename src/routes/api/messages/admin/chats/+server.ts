@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
             },
         });
 
-        const result = rows.reverse().map(row => {
+        const result = rows.map(row => {
             const msg = normaliseMessageFromDatabase(row);
             msg.deleted = row.deleted;
             return {
@@ -41,7 +41,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
             };
         });
 
-        return new Response(JSON.stringify({ messages: result }), { status: 200 });
+        return new Response(JSON.stringify({ messages: result, hasMore: rows.length === limit }), { status: 200 });
     }
 
     // List all chats with participant info and last message

@@ -1,9 +1,9 @@
 <script lang="ts">
     import SidebarContent from "$lib/substructure/SidebarContent.svelte";
     import Button from "$lib/components/Button.svelte";
-    import Input from "$lib/components/Input.svelte";
+    import IconButton from "$lib/components/IconButton.svelte";
     import Table from "$lib/components/Table.svelte";
-    import { alert, confirm } from "$lib/components/Dialog.svelte";
+    import { alert, confirm, prompt } from "$lib/components/Dialog.svelte";
     import Toast, { showToast } from "$lib/components/Toast.svelte";
     import { snowflakeToDate } from "$lib/functions/Snowflake.js";
     import { toTitleCase } from "$lib/functions/chatHelpers";
@@ -19,10 +19,26 @@
         return u ? toTitleCase(`${u.firstName} ${u.lastName}`) : id;
     };
 
+    // ==================== PRIVACY DIALOG ====================
+    let privacyAcknowledged = $state(false);
+
+    onMount(async () => {
+        await alert(
+            "Privacy & Responsibility Notice",
+            "This admin panel provides access to private user messages and reports. " +
+            "All information must be handled with care and used only for legitimate moderation and safety purposes. " +
+            "Any abuse of these features is a serious violation of trust and policy. " +
+            "All monitoring activity may be audited."
+        );
+        privacyAcknowledged = true;
+        loadReports();
+        loadBadWordsConfig();
+    });
+
     // ==================== CONDUCT ISSUES ====================
     let reports: any[] = $state([]);
     let reportsLoading = $state(false);
-    let reportStatusFilter = $state("all");
+    let reportStatusFilter = $state("open");
 
     const loadReports = async () => {
         reportsLoading = true;
@@ -46,6 +62,36 @@
             showToast("Report status updated", { icon: "check" });
             await loadReports();
         }
+    };
+
+    const addReportComment = async (reportId: string, currentNotes: string) => {
+        const note = await prompt("Add Comment", "Enter a comment or note for this report:", { startingValue: currentNotes, promptValue: "Admin notes" });
+        if (note === null) return;
+        const res = await fetch("/api/messages/admin/reports", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reportId, adminNotes: note }),
+        });
+        if (res.ok) {
+            showToast("Comment saved", { icon: "check" });
+            await loadReports();
+        }
+    };
+
+    // View message in chat context modal
+    let viewingChatContext: any = $state(null);
+    let chatContextMessages: any[] = $state([]);
+    let chatContextLoading = $state(false);
+
+    const viewMessageInContext = async (msg: any) => {
+        viewingChatContext = msg;
+        chatContextLoading = true;
+        const res = await fetch(`/api/messages/admin/chats?chatId=${msg.chatId}&limit=20`);
+        if (res.ok) {
+            const data = await res.json();
+            chatContextMessages = data.messages.reverse();
+        }
+        chatContextLoading = false;
     };
 
     // Bad words config
@@ -198,6 +244,9 @@
     let selectedChatId = $state<string | null>(null);
     let chatMessages: any[] = $state([]);
     let chatMessagesLoading = $state(false);
+    let chatMessagesPage = $state(1);
+    let chatHasMore = $state(false);
+    let chatLoadingMore = $state(false);
 
     const loadChats = async () => {
         chatsLoading = true;
@@ -212,13 +261,36 @@
 
     const selectChat = async (chatId: string) => {
         selectedChatId = chatId;
+        chatMessagesPage = 1;
+        chatMessages = [];
         chatMessagesLoading = true;
-        const res = await fetch(`/api/messages/admin/chats?chatId=${chatId}`);
+        const res = await fetch(`/api/messages/admin/chats?chatId=${chatId}&page=1&limit=50`);
         if (res.ok) {
             const data = await res.json();
-            chatMessages = data.messages;
+            chatMessages = data.messages.reverse();
+            chatHasMore = data.hasMore;
         }
         chatMessagesLoading = false;
+    };
+
+    const loadMoreChatMessages = async () => {
+        if (!selectedChatId || chatLoadingMore || !chatHasMore) return;
+        chatLoadingMore = true;
+        chatMessagesPage++;
+        const res = await fetch(`/api/messages/admin/chats?chatId=${selectedChatId}&page=${chatMessagesPage}&limit=50`);
+        if (res.ok) {
+            const data = await res.json();
+            chatMessages = [...data.messages.reverse(), ...chatMessages];
+            chatHasMore = data.hasMore;
+        }
+        chatLoadingMore = false;
+    };
+
+    const handleChatScroll = (e: Event) => {
+        const target = e.target as HTMLElement;
+        if (target.scrollTop < 100 && chatHasMore && !chatLoadingMore) {
+            void loadMoreChatMessages();
+        }
     };
 
     const getChatDisplayName = (chat: any) => {
@@ -232,11 +304,6 @@
         }
         return `Chat ${chat.id}`;
     };
-
-    onMount(() => {
-        loadReports();
-        loadBadWordsConfig();
-    });
 
     const formatTimestamp = (id: string) => {
         try {
@@ -278,8 +345,8 @@
     <h1 class="text-3xl font-bold mb-2">Conduct Issues</h1>
     <p class="text-neutral-400 mb-6">Manage reported messages and configure content filters.</p>
 
-    <!-- Privacy Warning -->
-    <div class="bg-amber-900/50 border-2 border-amber-600 p-4 mb-6" role="alert">
+    <!-- Privacy Warning Card -->
+    <div class="bg-amber-900/30 shadow-md p-4 mb-6" role="alert">
         <div class="flex items-center gap-2 mb-1">
             <span class="material-symbols-outlined text-amber-400">warning</span>
             <strong class="text-amber-300">Privacy Notice</strong>
@@ -301,10 +368,7 @@
                     <option value="resolved">Resolved</option>
                     <option value="dismissed">Dismissed</option>
                 </select>
-                <Button onclick={() => void loadReports()}>
-                    <span class="material-symbols-outlined text-sm">refresh</span>
-                    Refresh
-                </Button>
+                <IconButton onclick={() => void loadReports()} aria-label="Refresh reports">refresh</IconButton>
             </div>
         </div>
 
@@ -315,14 +379,14 @@
         {:else}
             <div class="space-y-3">
                 {#each reports as report}
-                    <div class="bg-gray-700 p-4 border border-gray-600">
+                    <div class="bg-gray-800 shadow-md p-4">
                         <div class="flex items-start justify-between mb-2">
-                            <div>
+                            <div class="flex items-center gap-2">
                                 <span class="inline-block px-2 py-0.5 text-xs font-bold uppercase
                                     {report.status === 'open' ? 'bg-red-700' : report.status === 'reviewed' ? 'bg-yellow-700' : report.status === 'resolved' ? 'bg-green-700' : 'bg-gray-600'}">
                                     {report.status}
                                 </span>
-                                <span class="text-xs text-neutral-400 ml-2">
+                                <span class="text-xs text-neutral-400">
                                     {report.source === 'badword' ? 'Auto-flagged (bad word)' : `Reported by ${report.reporter ? toTitleCase(`${report.reporter.firstName} ${report.reporter.lastName}`) : 'Unknown'}`}
                                 </span>
                             </div>
@@ -331,7 +395,7 @@
                         {#if report.reason}
                             <p class="text-sm mb-2"><strong>Reason:</strong> {report.reason}</p>
                         {/if}
-                        <div class="bg-gray-800 p-3 mb-3">
+                        <div class="bg-gray-700 p-3 mb-3">
                             <p class="text-xs text-neutral-400 mb-1">
                                 Message by <strong>{report.messageAuthor ? toTitleCase(`${report.messageAuthor.firstName} ${report.messageAuthor.lastName}`) : 'Unknown'}</strong>
                                 {#if report.message}
@@ -340,7 +404,13 @@
                             </p>
                             <p class="text-sm">{report.message?.content || '[Message deleted]'}</p>
                         </div>
-                        <div class="flex gap-2">
+                        {#if report.adminNotes}
+                            <div class="bg-green-900/30 p-3 mb-3 text-sm">
+                                <strong class="text-green-300">Admin Notes:</strong> {report.adminNotes}
+                            </div>
+                        {/if}
+                        <!-- Quick Actions -->
+                        <div class="flex flex-wrap gap-2">
                             {#if report.status === 'open'}
                                 <Button onclick={() => void updateReportStatus(report.id, 'reviewed')}>Mark Reviewed</Button>
                                 <Button onclick={() => void updateReportStatus(report.id, 'resolved')}>Resolve</Button>
@@ -350,6 +420,16 @@
                                 <Button onclick={() => void updateReportStatus(report.id, 'dismissed')}>Dismiss</Button>
                             {:else}
                                 <Button onclick={() => void updateReportStatus(report.id, 'open')}>Reopen</Button>
+                            {/if}
+                            <Button transparent onclick={() => void addReportComment(report.id, report.adminNotes || '')}>
+                                <span class="material-symbols-outlined text-sm">comment</span>
+                                Add Comment
+                            </Button>
+                            {#if report.message}
+                                <Button transparent onclick={() => void viewMessageInContext(report.message)}>
+                                    <span class="material-symbols-outlined text-sm">forum</span>
+                                    View in Chat
+                                </Button>
                             {/if}
                         </div>
                     </div>
@@ -361,19 +441,19 @@
     <!-- Bad Words Configuration -->
     <div>
         <h2 class="text-xl font-bold mb-4">Bad Words Filter</h2>
-        <div class="bg-gray-700 p-4 border border-gray-600">
+        <div class="bg-gray-800 shadow-md p-4">
             <div class="flex items-center gap-4 mb-4">
                 <label class="flex items-center gap-2 cursor-pointer" for="badwords-toggle">
                     <input id="badwords-toggle" type="checkbox" bind:checked={badWordsConfig.enabled}
                         class="w-4 h-4 accent-green-600" />
                     <span class="font-bold">{badWordsConfig.enabled ? 'Enabled' : 'Disabled'}</span>
                 </label>
-                <p class="text-sm text-neutral-400">When enabled, messages containing flagged words will be blocked and the sender will be prompted to revise their message.</p>
+                <p class="text-sm text-neutral-400">When enabled, messages containing flagged words will be blocked.</p>
             </div>
 
             <div class="flex gap-2 mb-4">
                 <input type="text" bind:value={newBadWord} placeholder="Add a word..."
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 flex-1 text-sm"
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 flex-1 text-sm"
                     aria-label="New bad word"
                     onkeydown={(e) => { if (e.key === 'Enter') addBadWord(); }} />
                 <Button onclick={addBadWord}>Add</Button>
@@ -382,7 +462,7 @@
             {#if badWordsConfig.words.length > 0}
                 <div class="flex flex-wrap gap-2 mb-4">
                     {#each badWordsConfig.words as word}
-                        <span class="bg-gray-600 px-3 py-1 text-sm flex items-center gap-1">
+                        <span class="bg-gray-700 px-3 py-1 text-sm flex items-center gap-1">
                             {word}
                             <button onclick={() => removeBadWord(word)} class="text-red-400 hover:text-red-300 ml-1"
                                 aria-label="Remove word {word}">
@@ -395,10 +475,52 @@
                 <p class="text-sm text-neutral-400 mb-4">No words configured.</p>
             {/if}
 
-            <Button onclick={() => void saveBadWordsConfig()}>Save Configuration</Button>
+            <div class="flex items-center gap-3">
+                <Button onclick={() => void saveBadWordsConfig()}>Save Configuration</Button>
+                <span class="text-xs text-neutral-400 italic">Configuration does not autosave — click Save to apply changes.</span>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Chat Context Modal -->
+{#if viewingChatContext}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" role="dialog" aria-label="Message in chat context" tabindex="-1"
+        onclick={() => viewingChatContext = null}
+        onkeydown={(e) => { if (e.key === 'Escape') viewingChatContext = null; }}>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+            role="document"
+            onclick={(e) => e.stopPropagation()}>
+            <div class="px-6 pt-5 pb-2">
+                <h2 class="text-2xl font-bold">Message in Context</h2>
+                <p class="text-sm text-neutral-400">Showing surrounding messages in the chat</p>
+            </div>
+            <div class="px-6 py-2 flex-1 overflow-y-auto">
+                {#if chatContextLoading}
+                    <p class="text-neutral-400">Loading...</p>
+                {:else}
+                    {#each chatContextMessages as msg}
+                        <div class="mb-3 p-2 {msg.id === viewingChatContext.id ? 'bg-amber-900/30 border-l-2 border-amber-400' : ''}">
+                            <div class="flex items-center gap-2 text-xs text-neutral-400 mb-0.5">
+                                <strong class="text-neutral-200">
+                                    {msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : getUserName(msg.author)}
+                                </strong>
+                                <span>{formatTimestamp(msg.id)}</span>
+                            </div>
+                            <p class="text-sm pl-2">{msg.content}</p>
+                        </div>
+                    {/each}
+                {/if}
+            </div>
+            <div class="px-6 pb-4 pt-2 flex justify-end">
+                <Button onclick={() => viewingChatContext = null}>Close</Button>
+            </div>
+        </div>
+    </div>
+{/if}
 {/snippet}
 
 {#snippet messagesContent()}
@@ -406,8 +528,8 @@
     <h1 class="text-3xl font-bold mb-2">Message Viewing</h1>
     <p class="text-neutral-400 mb-4">Search, filter, and manage all messages across the platform.</p>
 
-    <!-- Privacy Warning -->
-    <div class="bg-amber-900/50 border-2 border-amber-600 p-4 mb-6" role="alert">
+    <!-- Privacy Warning Card -->
+    <div class="bg-amber-900/30 shadow-md p-4 mb-6" role="alert">
         <div class="flex items-center gap-2 mb-1">
             <span class="material-symbols-outlined text-amber-400">warning</span>
             <strong class="text-amber-300">Privacy Notice</strong>
@@ -415,14 +537,14 @@
         <p class="text-sm text-amber-200">You are viewing private messages. This feature must only be used for legitimate moderation and safety purposes. Any abuse of this feature is a violation of trust and policy.</p>
     </div>
 
-    <!-- Filter Panel -->
-    <div class="bg-gray-700 p-4 border border-gray-600 mb-6">
+    <!-- Filter Panel Card -->
+    <div class="bg-gray-800 shadow-md p-4 mb-6">
         <h2 class="text-lg font-bold mb-3">Filters</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             <div>
                 <label for="filter-author" class="block text-xs text-neutral-400 mb-1">Author</label>
                 <select id="filter-author" bind:value={filterAuthor}
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm">
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm">
                     <option value="">All Users</option>
                     {#each users as user}
                         <option value={user.id}>{toTitleCase(`${user.firstName} ${user.lastName}`)} (@{user.username})</option>
@@ -432,24 +554,24 @@
             <div>
                 <label for="filter-keyword" class="block text-xs text-neutral-400 mb-1">Keyword Search</label>
                 <input id="filter-keyword" type="text" bind:value={filterKeyword} placeholder="Search messages..."
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm" />
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
             <div>
                 <label for="filter-chatid" class="block text-xs text-neutral-400 mb-1">Chat ID</label>
                 <input id="filter-chatid" type="text" bind:value={filterChatId} placeholder="Filter by chat ID..."
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm" />
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
             <div>
                 <label for="filter-datefrom" class="block text-xs text-neutral-400 mb-1">Date From</label>
                 <input id="filter-datefrom" type="date" bind:value={filterDateFrom}
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm" />
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
             <div>
                 <label for="filter-dateto" class="block text-xs text-neutral-400 mb-1">Date To</label>
                 <input id="filter-dateto" type="date" bind:value={filterDateTo}
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm" />
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
             <div class="flex items-end gap-4">
                 <label class="flex items-center gap-2 cursor-pointer" for="filter-attachment">
@@ -466,7 +588,7 @@
             <div>
                 <label for="filter-sort" class="block text-xs text-neutral-400 mb-1">Sort</label>
                 <select id="filter-sort" bind:value={filterSort}
-                    class="bg-gray-800 border border-gray-600 px-3 py-1.5 w-full text-sm">
+                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm">
                     <option value="desc">Newest First</option>
                     <option value="asc">Oldest First</option>
                 </select>
@@ -481,82 +603,93 @@
         </div>
     </div>
 
-    <!-- Actions -->
-    <div class="flex gap-2 mb-4 flex-wrap">
-        <Button onclick={() => exportMessages('json')} transparent>
-            <span class="material-symbols-outlined text-sm">download</span>
-            Export JSON
-        </Button>
-        <Button onclick={() => exportMessages('csv')} transparent>
-            <span class="material-symbols-outlined text-sm">download</span>
-            Export CSV
-        </Button>
-        <Button onclick={() => exportMessages('txt')} transparent>
-            <span class="material-symbols-outlined text-sm">download</span>
-            Export Plaintext
-        </Button>
-        <Button onclick={() => void massDelete(false)} transparent>
-            <span class="material-symbols-outlined text-sm">delete</span>
-            Mark Selected Deleted
-        </Button>
-        <Button onclick={() => void massDelete(true)} transparent>
-            <span class="material-symbols-outlined text-sm">delete_forever</span>
-            Permanently Delete Selected
-        </Button>
-    </div>
-
     <!-- Results -->
     {#if messagesLoading}
         <p class="text-neutral-400">Loading messages...</p>
     {:else if adminMessages.length === 0}
         <p class="text-neutral-400">No messages found. Use the filters above and click Search.</p>
     {:else}
-        <div class="mb-4 text-sm text-neutral-400">
+        <div class="mb-2 text-sm text-neutral-400">
             Showing {adminMessages.length} of {messagesTotal} messages (Page {messagesPage})
         </div>
-        <div class="space-y-1">
-            {#each adminMessages as msg, i}
-                <div class="flex items-start gap-2 p-2 bg-gray-700 border border-gray-600 {msg.deleted ? 'opacity-50' : ''}">
-                    <input type="checkbox" bind:checked={selectedMessages[i]}
-                        class="mt-1 w-4 h-4 accent-green-600"
-                        aria-label="Select message {msg.id}" />
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 text-xs text-neutral-400 mb-1">
-                            <strong class="text-neutral-200">{msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : msg.author}</strong>
-                            <span>{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : formatTimestamp(msg.id)}</span>
-                            {#if msg.edited}
-                                <span class="text-yellow-400 cursor-pointer" role="button" tabindex="0"
-                                    onclick={() => viewingEditHistory = msg}
-                                    onkeydown={(e) => { if (e.key === 'Enter') viewingEditHistory = msg; }}
-                                    aria-label="View edit history">(edited)</span>
-                            {/if}
-                            {#if msg.deleted}
-                                <span class="text-red-400">[deleted]</span>
-                            {/if}
-                            {#if msg.attachments?.length > 0}
-                                <span class="text-blue-400">
-                                    <span class="material-symbols-outlined text-xs">attach_file</span>
-                                    {msg.attachments.length}
-                                </span>
-                            {/if}
-                        </div>
-                        <p class="text-sm break-words">{msg.content}</p>
+
+        <Table
+            source={adminMessages}
+            bind:selected={selectedMessages}
+            emptyStr="No messages found."
+            actions={[
+                { name: "Mark Deleted", icon: "delete", action: async (indices: number[], reset: Function) => {
+                    indices.forEach(i => selectedMessages[i] = true);
+                    await massDelete(false);
+                    reset();
+                }},
+                { name: "Permanently Delete", icon: "delete_forever", action: async (indices: number[], reset: Function) => {
+                    indices.forEach(i => selectedMessages[i] = true);
+                    await massDelete(true);
+                    reset();
+                }},
+                { name: "Export JSON", icon: "download", action: async (indices: number[]) => {
+                    indices.forEach(i => selectedMessages[i] = true);
+                    exportMessages('json');
+                }},
+                { name: "Export CSV", icon: "table_chart", action: async (indices: number[]) => {
+                    indices.forEach(i => selectedMessages[i] = true);
+                    exportMessages('csv');
+                }},
+            ]}
+            defaultActions={[
+                { name: "Export JSON", icon: "download", action: () => exportMessages('json') },
+                { name: "Export CSV", icon: "table_chart", action: () => exportMessages('csv') },
+                { name: "Export Plaintext", icon: "description", action: () => exportMessages('txt') },
+                { name: "Refresh", icon: "refresh", action: () => void loadMessages() },
+            ]}
+        >
+            {#snippet header()}
+                <th>Author</th>
+                <th>Content</th>
+                <th>Time</th>
+                <th>Status</th>
+                <th class="w-24">Actions</th>
+            {/snippet}
+            {#snippet template(msg, i)}
+                <td class="px-2 text-sm whitespace-nowrap">
+                    {msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : msg.author}
+                </td>
+                <td class="px-2 text-sm max-w-xs truncate">{msg.content}</td>
+                <td class="px-2 text-xs text-neutral-400 whitespace-nowrap">{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : formatTimestamp(msg.id)}</td>
+                <td class="px-2 text-xs">
+                    {#if msg.deleted}<span class="text-red-400">[deleted]</span>{/if}
+                    {#if msg.edited}
+                        <span class="text-yellow-400 cursor-pointer" role="button" tabindex="0"
+                            onclick={() => viewingEditHistory = msg}
+                            onkeydown={(e) => { if (e.key === 'Enter') viewingEditHistory = msg; }}
+                            aria-label="View edit history">(edited)</span>
+                    {/if}
+                    {#if msg.attachments?.length > 0}
+                        <span class="text-blue-400">
+                            <span class="material-symbols-outlined text-xs align-middle">attach_file</span>
+                        </span>
+                    {/if}
+                </td>
+                <td class="px-2">
+                    <div class="flex gap-1">
+                        <IconButton transparent onclick={() => void viewMessageInContext(msg)} aria-label="View in chat context">
+                            forum
+                        </IconButton>
                     </div>
-                </div>
-            {/each}
-        </div>
+                </td>
+            {/snippet}
+        </Table>
 
         <!-- Pagination -->
-        <div class="flex justify-center gap-2 mt-4">
-            <Button disabled={messagesPage <= 1} onclick={() => { messagesPage--; void loadMessages(); }}>
-                <span class="material-symbols-outlined text-sm">chevron_left</span>
-                Previous
-            </Button>
-            <span class="flex items-center text-sm text-neutral-400">Page {messagesPage}</span>
-            <Button disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; void loadMessages(); }}>
-                Next
-                <span class="material-symbols-outlined text-sm">chevron_right</span>
-            </Button>
+        <div class="flex justify-center items-center gap-2 mt-4">
+            <IconButton disabled={messagesPage <= 1} onclick={() => { messagesPage--; void loadMessages(); }} aria-label="Previous page">
+                chevron_left
+            </IconButton>
+            <span class="text-sm text-neutral-400">Page {messagesPage}</span>
+            <IconButton disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; void loadMessages(); }} aria-label="Next page">
+                chevron_right
+            </IconButton>
         </div>
     {/if}
 
@@ -568,27 +701,31 @@
             onkeydown={(e) => { if (e.key === 'Escape') viewingEditHistory = null; }}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div class="bg-gray-800 border-2 border-gray-600 p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
                 role="document"
                 onclick={(e) => e.stopPropagation()}>
-                <h2 class="text-xl font-bold mb-4">Edit History</h2>
-                <div class="mb-4">
-                    <p class="text-xs text-neutral-400 mb-1">Current version:</p>
-                    <div class="bg-gray-700 p-3 text-sm">{viewingEditHistory.content}</div>
+                <div class="px-6 pt-5 pb-2">
+                    <h2 class="text-2xl font-bold">Edit History</h2>
                 </div>
-                {#if viewingEditHistory.editHistory && viewingEditHistory.editHistory.length > 0}
-                    {#each viewingEditHistory.editHistory.toReversed() as edit, i}
-                        <div class="mb-3">
-                            <p class="text-xs text-neutral-400 mb-1">
-                                Version {viewingEditHistory.editHistory.length - i} — {new Date(edit.editedAt).toLocaleString()}
-                            </p>
-                            <div class="bg-gray-700 p-3 text-sm">{edit.content}</div>
-                        </div>
-                    {/each}
-                {:else}
-                    <p class="text-neutral-400 text-sm">No edit history available.</p>
-                {/if}
-                <div class="flex justify-end mt-4">
+                <div class="px-6 py-2 flex-1 overflow-y-auto">
+                    <div class="mb-4">
+                        <p class="text-xs text-neutral-400 mb-1">Current version:</p>
+                        <div class="bg-gray-700 p-3 text-sm">{viewingEditHistory.content}</div>
+                    </div>
+                    {#if viewingEditHistory.editHistory && viewingEditHistory.editHistory.length > 0}
+                        {#each viewingEditHistory.editHistory.toReversed() as edit, i}
+                            <div class="mb-3">
+                                <p class="text-xs text-neutral-400 mb-1">
+                                    Version {viewingEditHistory.editHistory.length - i} — {new Date(edit.editedAt).toLocaleString()}
+                                </p>
+                                <div class="bg-gray-700 p-3 text-sm">{edit.content}</div>
+                            </div>
+                        {/each}
+                    {:else}
+                        <p class="text-neutral-400 text-sm">No edit history available.</p>
+                    {/if}
+                </div>
+                <div class="px-6 pb-4 pt-2 flex justify-end">
                     <Button onclick={() => viewingEditHistory = null}>Close</Button>
                 </div>
             </div>
@@ -602,8 +739,8 @@
     <h1 class="text-3xl font-bold mb-2">Chat Monitoring</h1>
     <p class="text-neutral-400 mb-4">View all chats and their messages in a read-only mode.</p>
 
-    <!-- Privacy Warning -->
-    <div class="bg-amber-900/50 border-2 border-amber-600 p-4 mb-6" role="alert">
+    <!-- Privacy Warning Card -->
+    <div class="bg-amber-900/30 shadow-md p-4 mb-6" role="alert">
         <div class="flex items-center gap-2 mb-1">
             <span class="material-symbols-outlined text-amber-400">warning</span>
             <strong class="text-amber-300">Privacy Notice</strong>
@@ -615,22 +752,21 @@
         <!-- Chat List -->
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold">All Chats</h2>
-            <Button onclick={() => void loadChats()}>
-                <span class="material-symbols-outlined text-sm">refresh</span>
-                {adminChats.length > 0 ? 'Refresh' : 'Load Chats'}
-            </Button>
+            <IconButton onclick={() => void loadChats()} aria-label="{adminChats.length > 0 ? 'Refresh chats' : 'Load chats'}">
+                refresh
+            </IconButton>
         </div>
 
         {#if chatsLoading}
             <p class="text-neutral-400">Loading chats...</p>
         {:else if adminChats.length === 0}
-            <p class="text-neutral-400">Click "Load Chats" to view all conversations.</p>
+            <p class="text-neutral-400">Click the refresh button to load all conversations.</p>
         {:else}
             <div class="space-y-2">
                 {#each adminChats as chat}
                     <button
-                        class="w-full text-left bg-gray-700 border border-gray-600 p-4 hover:bg-gray-600 transition-colors"
-                        onclick={() => selectChat(chat.id)}
+                        class="w-full text-left bg-gray-800 shadow-md p-4 hover:bg-gray-700 transition-colors"
+                        onclick={() => void selectChat(chat.id)}
                         aria-label="Open chat {getChatDisplayName(chat)}"
                     >
                         <div class="flex items-center justify-between">
@@ -674,7 +810,15 @@
         {#if chatMessagesLoading}
             <p class="text-neutral-400">Loading messages...</p>
         {:else}
-            <div class="bg-gray-800 border border-gray-600 p-4 max-h-[60vh] overflow-y-auto">
+            <div class="bg-gray-800 shadow-md p-4 max-h-[60vh] overflow-y-auto" onscroll={handleChatScroll}>
+                {#if chatLoadingMore}
+                    <p class="text-neutral-400 text-center text-sm py-2">Loading older messages...</p>
+                {/if}
+                {#if chatHasMore && !chatLoadingMore}
+                    <div class="text-center py-2">
+                        <Button transparent onclick={() => void loadMoreChatMessages()}>Load older messages</Button>
+                    </div>
+                {/if}
                 {#if chatMessages.length === 0}
                     <p class="text-neutral-400 text-center">No messages in this chat.</p>
                 {:else}

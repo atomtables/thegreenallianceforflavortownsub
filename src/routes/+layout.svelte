@@ -5,7 +5,6 @@
     import { titleize } from "$lib/functions/code";
     import { onMount } from "svelte";
     import { alert } from "$lib/components/Dialog.svelte";
-    import { Permission, Role } from "$lib/types/types";
 
     let { data, children } = $props();
     let { user, session } = data || {};
@@ -114,7 +113,7 @@
             isDropdown
             elements={[
                 { name: "Messages", url: "/messages/chat" },
-                data.user?.permissions.includes(Permission.message_moderate) && data.user?.role >= Role.mentor && { name: "Message Log", url: "/messages/admin" },
+                data.canAccessAdmin && { name: "Message Log", url: "/messages/admin" },
                 { name: "Announcements", url: "/messages/announcements" },
             ].filter(v=>v)}
         />

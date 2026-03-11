@@ -59,32 +59,43 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     }), { status: 200 });
 };
 
-// PATCH: Update report status
+// PATCH: Update report status or add notes
 export const PATCH: RequestHandler = async ({ locals, request }) => {
     if (!hasAdminAccess(locals.user)) {
         return new Response("Not Found", { status: 404 });
     }
 
-    let body: { reportId: string, status: string };
+    let body: { reportId: string, status?: string, adminNotes?: string };
     try {
         body = await request.json();
     } catch {
         return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
     }
 
-    if (!body.reportId || !body.status) {
-        return new Response(JSON.stringify({ error: "Report ID and status are required" }), { status: 400 });
+    if (!body.reportId) {
+        return new Response(JSON.stringify({ error: "Report ID is required" }), { status: 400 });
     }
 
-    const validStatuses = ["open", "reviewed", "resolved", "dismissed"];
-    if (!validStatuses.includes(body.status)) {
-        return new Response(JSON.stringify({ error: "Invalid status" }), { status: 400 });
+    const updateData: any = {};
+
+    if (body.status) {
+        const validStatuses = ["open", "reviewed", "resolved", "dismissed"];
+        if (!validStatuses.includes(body.status)) {
+            return new Response(JSON.stringify({ error: "Invalid status" }), { status: 400 });
+        }
+        updateData.status = body.status;
+        if (body.status === "resolved" || body.status === "dismissed") {
+            updateData.resolvedAt = new Date();
+            updateData.resolvedBy = locals.user!.id;
+        }
     }
 
-    const updateData: any = { status: body.status };
-    if (body.status === "resolved" || body.status === "dismissed") {
-        updateData.resolvedAt = new Date();
-        updateData.resolvedBy = locals.user!.id;
+    if (typeof body.adminNotes === "string") {
+        updateData.adminNotes = body.adminNotes;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400 });
     }
 
     await db.update(messageReports)

@@ -139,6 +139,7 @@ export const messageReports = pgTable("message_reports", {
     resolvedAt: timestamp("resolved_at", { mode: 'date' }),
     resolvedBy: varchar("resolved_by", { length: 36 }).references(() => users.id),
     source: text("source").notNull().default("user"),
+    adminNotes: text("admin_notes").notNull().default(""),
 }, (table) => [
     index("message_reports_message_idx").on(table.messageId),
     index("message_reports_author_idx").on(table.messageAuthorId),

@@ -319,6 +319,12 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
         return new Response(JSON.stringify({ error: `Message content exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters` }), { status: 400 });
     }
 
+    // Check for bad words in edited content
+    const badWordsFound = checkForBadWords(newContent);
+    if (badWordsFound.length > 0) {
+        return new Response(JSON.stringify({ error: "Your message contains words that are not allowed. Please revise your message.", badWords: true }), { status: 400 });
+    }
+
     let message: Message | null;
     try {
         message = await db.query.messages
