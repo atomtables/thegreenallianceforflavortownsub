@@ -20,15 +20,19 @@ View and manage reported messages and configure content filters.
 
 #### Reports Management
 - View all user-submitted and auto-flagged reports
-- Filter reports by status: `open`, `reviewed`, `resolved`, `dismissed`
+- Filter reports by status: `open`, `reviewed`, `resolved`, `dismissed` (defaults to open)
 - Update report status with actions: Mark Reviewed, Resolve, Dismiss, Reopen
+- Add admin comments/notes to reports
+- View the reported message in chat context (surrounding messages shown in a modal)
 - Each report shows the reported message content, author, reporter, reason, and timestamp
 
 #### Bad Words Filter
 - Toggle the bad words filter on/off (disabled by default)
+- Includes reasonable defaults that administrators can extend
 - Add/remove words from the filter list
-- When enabled, messages containing flagged words are blocked before sending
+- When enabled, messages containing flagged words are blocked before sending and editing
 - Configuration stored in `src/lib/server/admin/badwords.json`
+- Configuration does not autosave — administrators must click Save to apply changes
 
 ### 2. Message Viewing
 
@@ -44,12 +48,13 @@ Search, filter, export, and manage all messages across the platform.
 - **Sort**: Newest first or oldest first
 
 #### Actions
-- **Export JSON**: Download messages as JSON file
-- **Export CSV**: Download messages as CSV file
-- **Export Plaintext**: Download messages as plain text file
+- Messages are displayed in a table with checkboxes for selection
+- **Export JSON/CSV/Plaintext**: Download messages (selected or all)
 - **Mark Selected Deleted**: Soft-delete selected messages
 - **Permanently Delete Selected**: Permanently remove selected messages from database
 - **View Edit History**: Click "(edited)" label to view full edit history of a message
+- **View in Chat Context**: View a message within its surrounding chat conversation
+- Default actions (refresh, export) available when no messages are selected
 
 ### 3. Chat Monitoring
 
@@ -58,6 +63,7 @@ View all chats and their messages in read-only mode.
 - Browse all chats (DMs and group chats)
 - View participant lists and last messages
 - Open any chat to view its full message history
+- Recent messages shown first, scroll up to load older messages
 - Read-only access — administrators cannot send, edit, or delete messages through this view
 
 ## API Endpoints
@@ -129,17 +135,18 @@ Create a new report (user-facing, does not require admin access).
 ```
 
 #### `PATCH /api/messages/admin/reports`
-Update report status (admin only).
+Update report status or add admin notes (admin only).
 
 **Request Body:**
 ```json
 {
     "reportId": "report_snowflake_id",
-    "status": "resolved"
+    "status": "resolved",
+    "adminNotes": "Reviewed and confirmed violation"
 }
 ```
 
-Valid statuses: `open`, `reviewed`, `resolved`, `dismissed`
+All fields except `reportId` are optional. Valid statuses: `open`, `reviewed`, `resolved`, `dismissed`
 
 ### Chats
 
@@ -215,6 +222,7 @@ Accept the Terms of Service (sets `tosAgreedAt` for the authenticated user).
 | `resolved_at` | timestamp | When the report was resolved |
 | `resolved_by` | varchar(36) | FK to users (who resolved it) |
 | `source` | text | "user" or "badword" |
+| `admin_notes` | text | Admin comments/notes on the report |
 
 ### `users` Table Addition
 | Column | Type | Description |
