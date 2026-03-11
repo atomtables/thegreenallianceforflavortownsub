@@ -438,6 +438,37 @@ test.describe("Messages endpoint tests", () => {
             expect(body.chats).toBeDefined();
             expect(Array.isArray(body.chats)).toBe(true);
             expect(body.users).toBeDefined();
+            // allowedUsers should always be present
+            expect(body.allowedUsers).toBeDefined();
+            expect(Array.isArray(body.allowedUsers)).toBe(true);
+        });
+
+        test("allowedUsers does not include the current user and has no password hashes", async ({ request }) => {
+            await signin(request);
+
+            // Get the current user's info
+            const usersResponse = await request.get('/api/users/list');
+            expect(usersResponse.status()).toBe(200);
+            const usersBody = await usersResponse.json();
+            const currentUser = usersBody.users.find((u: any) => u.username === process.env.MOD_USER);
+            expect(currentUser).toBeDefined();
+
+            const response = await request.get('/api/messages');
+            expect(response.status()).toBe(200);
+            const body = await response.json();
+
+            expect(body.allowedUsers).toBeDefined();
+            expect(Array.isArray(body.allowedUsers)).toBe(true);
+
+            // The current user should never appear in their own allowedUsers list
+            const selfInAllowed = body.allowedUsers.find((u: any) => u.id === currentUser.id);
+            expect(selfInAllowed).toBeUndefined();
+
+            // Each allowed user should have basic fields and no password hash
+            for (const user of body.allowedUsers) {
+                expect(user.id).toBeDefined();
+                expect(user.passwordHash).toBeNull();
+            }
         });
 
         test("chats include participant information", async ({ request }) => {
