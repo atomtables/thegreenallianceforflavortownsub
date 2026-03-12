@@ -33,6 +33,8 @@ export function checkForBadWords(content: string): string[] {
     const lower = content.toLowerCase();
     return config.words.filter(word => {
         try {
+            // Validate that the regex isn't excessively complex (basic ReDoS protection)
+            if (word.length > 200) return false;
             const pattern = new RegExp(word, 'i');
             return pattern.test(lower);
         } catch {

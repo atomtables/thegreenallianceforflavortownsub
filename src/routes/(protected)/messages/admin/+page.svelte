@@ -472,7 +472,7 @@
 
             <p class="text-xs text-neutral-400 mb-3">
                 Words use <strong>regex patterns</strong> by default (e.g. <code class="bg-gray-700 px-1">\bword\b</code> for word boundary matching).
-                You can add plain words or custom regex patterns.
+                Plain words with special characters will be automatically escaped if the regex is invalid.
             </p>
 
             <div class="flex gap-2 mb-4">
@@ -515,7 +515,7 @@
         onkeydown={(e) => { if (e.key === 'Escape') viewingChatContext = null; }}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
             role="document"
             onclick={(e) => e.stopPropagation()}>
             <div class="px-6 pt-5 pb-2">
@@ -721,7 +721,7 @@
             onkeydown={(e) => { if (e.key === 'Escape') viewingEditHistory = null; }}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+            <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
                 role="document"
                 onclick={(e) => e.stopPropagation()}>
                 <div class="px-6 pt-5 pb-2">
@@ -895,7 +895,7 @@
         onkeydown={(e) => { if (e.key === 'Escape') chatViewingEditHistory = null; }}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
             role="document"
             onclick={(e) => e.stopPropagation()}>
             <div class="px-6 pt-5 pb-2">
