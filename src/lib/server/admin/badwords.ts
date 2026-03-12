@@ -21,12 +21,25 @@ export function saveBadWordsConfig(config: BadWordsConfig): void {
     writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4) + '\n', 'utf-8');
 }
 
+/**
+ * Check message content against bad words list.
+ * Each word entry is treated as a regex pattern.
+ * Default entries use word-boundary patterns like `\bword\b`.
+ * Admins can add custom regex patterns for more advanced matching.
+ */
 export function checkForBadWords(content: string): string[] {
     const config = getBadWordsConfig();
     if (!config.enabled || config.words.length === 0) return [];
     const lower = content.toLowerCase();
     return config.words.filter(word => {
-        const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-        return pattern.test(lower);
+        try {
+            const pattern = new RegExp(word, 'i');
+            return pattern.test(lower);
+        } catch {
+            // If the pattern is invalid regex, fall back to escaped literal match
+            const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const fallback = new RegExp(`\\b${escaped}\\b`, 'i');
+            return fallback.test(lower);
+        }
     });
 }

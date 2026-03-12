@@ -8,7 +8,8 @@
         type?: "button" | "submit" | "reset",
         disabled?: boolean,
         transparent?: boolean,
-        disableLoading?: boolean
+        disableLoading?: boolean,
+        title?: string,
     };
 
     let {
@@ -18,7 +19,8 @@
         type = "button", 
         disabled = $bindable(), 
         transparent = false, 
-        disableLoading = false
+        disableLoading = false,
+        title = undefined,
     }:ButtonProps = $props();
 
     let resolving = $state(false);
@@ -36,7 +38,7 @@
     };
 </script>
 
-<button {type}
+<button {type} {title}
         class="grid place-items-center px-5 py-2 {disabled ? `cursor-not-allowed ${!transparent && 'dark:bg-neutral-700 bg-green-200'} text-gray-300` : `cursor-pointer ${!transparent ? 'dark:bg-green-700 dark:hover:bg-green-600 dark:active:bg-green-500 bg-green-300 hover:bg-green-400 active:bg-green-500' : 'hover:bg-neutral-400/25 active:bg-neutral-400/50'}`} {resolving && !disableLoading && 'cursor-progress'} uppercase font-bold transition-all flex flex-row {className}"
         onclick={handleClick}>
     <span class="flex flex-row">

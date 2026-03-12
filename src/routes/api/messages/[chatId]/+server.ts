@@ -7,8 +7,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { and, count, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { produce } from "sveltekit-sse";
 import { _clients as clients } from "../stream/+server";
-import { messagesReactions, messagesReadReceipts, messageReports } from "$lib/server/db/schema/messages";
-import { checkForBadWords } from "$lib/server/admin/badwords";
+import { messagesReactions, messagesReadReceipts } from "$lib/server/db/schema/messages";
 
 const MAX_MESSAGE_LENGTH = 10000;
 
@@ -172,12 +171,6 @@ export const POST: RequestHandler = async ({ request, locals, params }) => {
         return new Response(JSON.stringify({ error: `Message content exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters` }), { status: 400 });
     }
 
-    // Check for bad words
-    const badWordsFound = checkForBadWords(content);
-    if (badWordsFound.length > 0) {
-        return new Response(JSON.stringify({ error: "Your message contains words that are not allowed. Please revise your message.", badWords: true }), { status: 400 });
-    }
-
     // let's make sure the user is in the chat
     try {
         const chatRecord = await db.query.chats
@@ -317,12 +310,6 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
     }
     if (newContent.length > MAX_MESSAGE_LENGTH) {
         return new Response(JSON.stringify({ error: `Message content exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters` }), { status: 400 });
-    }
-
-    // Check for bad words in edited content
-    const badWordsFound = checkForBadWords(newContent);
-    if (badWordsFound.length > 0) {
-        return new Response(JSON.stringify({ error: "Your message contains words that are not allowed. Please revise your message.", badWords: true }), { status: 400 });
     }
 
     let message: Message | null;

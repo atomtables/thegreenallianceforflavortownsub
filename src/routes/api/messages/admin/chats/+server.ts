@@ -35,6 +35,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
         const result = rows.map(row => {
             const msg = normaliseMessageFromDatabase(row);
             msg.deleted = row.deleted;
+            msg.editHistory = row.editHistory;
             return {
                 ...msg,
                 authorUser: row.authorUser ? cleanUserFromDatabase(row.authorUser) : null,
