@@ -250,8 +250,8 @@
 
 {#if open}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/50 backdrop-blur-sm" transition:fade={{ delay: 50, duration: 150, easing: quadInOut }}>
-        <div class="bg-neutral-800 shadow-xl w-full min-w-md max-w-2xl mx-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150, easing: quadInOut }}>
-            <div class="px-6 pt-5">
+        <div class="bg-neutral-800 shadow-xl w-full min-w-md max-w-2xl mx-4 max-h-[85vh] flex flex-col" role="dialog" aria-modal="true" transition:fade={{ duration: 150, easing: quadInOut }}>
+            <div class="px-6 pt-5 shrink-0">
                 <h2 class="text-2xl font-bold flex flex-row items-center gap-2">
                     {#if loading}
                         <Spinner class="p-1" />
@@ -261,12 +261,12 @@
                 <h5 class="pt-0 font-semibold max-w-full text-ellipsis overflow-none">{@html description}</h5>
             </div>
 
-            <div class="px-6 py-2">
+            <div class="px-6 py-2 overflow-y-auto flex-1 min-h-0">
                 {@render children?.()}
             </div>
 
             {#if actions}
-                <div class="px-6 pb-4 pt-4 flex justify-end gap-2">
+                <div class="px-6 pb-4 pt-4 flex justify-end gap-2 shrink-0">
                     {#each actions as { name, action, primary, close }}
                         <Button
                             transparent={!primary}

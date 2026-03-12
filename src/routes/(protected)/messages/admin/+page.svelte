@@ -2,6 +2,7 @@
     import SidebarContent from "$lib/substructure/SidebarContent.svelte";
     import Button from "$lib/components/Button.svelte";
     import IconButton from "$lib/components/IconButton.svelte";
+    import Input from "$lib/components/Input.svelte";
     import Table from "$lib/components/Table.svelte";
     import { alert, confirm, prompt } from "$lib/components/Dialog.svelte";
     import Toast, { showToast } from "$lib/components/Toast.svelte";
@@ -82,9 +83,11 @@
     let viewingChatContext: any = $state(null);
     let chatContextMessages: any[] = $state([]);
     let chatContextLoading = $state(false);
+    let viewingChatContextChatId: string | null = $state(null);
 
     const viewMessageInContext = async (msg: any) => {
         viewingChatContext = msg;
+        viewingChatContextChatId = msg.chatId;
         chatContextLoading = true;
         const res = await fetch(`/api/messages/admin/chats?chatId=${msg.chatId}&limit=20`);
         if (res.ok) {
@@ -92,6 +95,16 @@
             chatContextMessages = data.messages.toReversed();
         }
         chatContextLoading = false;
+    };
+
+    const openContextInChatsPanel = () => {
+        const chatId = viewingChatContextChatId;
+        viewingChatContext = null;
+        if (chatId) {
+            // Load the chat data - user then switches to Chats tab to see it
+            void selectChat(chatId);
+            showToast("Chat loaded — switch to the Chats tab to view full context", { icon: "forum" });
+        }
     };
 
     // Bad words config
@@ -247,6 +260,7 @@
     let chatMessagesPage = $state(1);
     let chatHasMore = $state(false);
     let chatLoadingMore = $state(false);
+    let chatViewingEditHistory: any = $state(null);
 
     const loadChats = async () => {
         chatsLoading = true;
@@ -311,6 +325,15 @@
         } catch {
             return "Unknown";
         }
+    };
+
+    const formatReactions = (reactions: {[userId: string]: string}) => {
+        if (!reactions || Object.keys(reactions).length === 0) return '';
+        const counts: {[emoji: string]: number} = {};
+        for (const emoji of Object.values(reactions)) {
+            counts[emoji] = (counts[emoji] || 0) + 1;
+        }
+        return Object.entries(counts).map(([emoji, count]) => `${emoji} ${count}`).join(' ');
     };
 </script>
 
@@ -443,16 +466,17 @@
         <h2 class="text-xl font-bold mb-4">Bad Words Filter</h2>
         <div class="bg-gray-800 shadow-md p-4">
             <div class="flex items-center gap-4 mb-4">
-                <label class="flex items-center gap-2 cursor-pointer" for="badwords-toggle">
-                    <input id="badwords-toggle" type="checkbox" bind:checked={badWordsConfig.enabled}
-                        class="w-4 h-4 accent-green-600" />
-                    <span class="font-bold">{badWordsConfig.enabled ? 'Enabled' : 'Disabled'}</span>
-                </label>
+                <Input type="checkbox" name="Enable filter" bind:value={badWordsConfig.enabled} />
                 <p class="text-sm text-neutral-400">When enabled, messages containing flagged words will be blocked.</p>
             </div>
 
+            <p class="text-xs text-neutral-400 mb-3">
+                Words use <strong>regex patterns</strong> by default (e.g. <code class="bg-gray-700 px-1">\bword\b</code> for word boundary matching).
+                Plain words with special characters will be automatically escaped if the regex is invalid.
+            </p>
+
             <div class="flex gap-2 mb-4">
-                <input type="text" bind:value={newBadWord} placeholder="Add a word..."
+                <input type="text" bind:value={newBadWord} placeholder="Add a word or regex pattern..."
                     class="bg-gray-700 border border-gray-600 px-3 py-1.5 flex-1 text-sm"
                     aria-label="New bad word"
                     onkeydown={(e) => { if (e.key === 'Enter') addBadWord(); }} />
@@ -491,7 +515,7 @@
         onkeydown={(e) => { if (e.key === 'Escape') viewingChatContext = null; }}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
             role="document"
             onclick={(e) => e.stopPropagation()}>
             <div class="px-6 pt-5 pb-2">
@@ -515,7 +539,11 @@
                     {/each}
                 {/if}
             </div>
-            <div class="px-6 pb-4 pt-2 flex justify-end">
+            <div class="px-6 pb-4 pt-2 flex justify-end gap-2">
+                <Button transparent onclick={openContextInChatsPanel}>
+                    <span class="material-symbols-outlined text-sm">open_in_new</span>
+                    Open in Chats Panel
+                </Button>
                 <Button onclick={() => viewingChatContext = null}>Close</Button>
             </div>
         </div>
@@ -574,16 +602,8 @@
                     class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
             <div class="flex items-end gap-4">
-                <label class="flex items-center gap-2 cursor-pointer" for="filter-attachment">
-                    <input id="filter-attachment" type="checkbox" bind:checked={filterHasAttachment}
-                        class="w-4 h-4 accent-green-600" />
-                    <span class="text-sm">Has Attachment</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer" for="filter-deleted">
-                    <input id="filter-deleted" type="checkbox" bind:checked={filterShowDeleted}
-                        class="w-4 h-4 accent-green-600" />
-                    <span class="text-sm">Show Deleted</span>
-                </label>
+                <Input type="checkbox" name="Has Attachment" bind:value={filterHasAttachment} />
+                <Input type="checkbox" name="Show Deleted" bind:value={filterShowDeleted} />
             </div>
             <div>
                 <label for="filter-sort" class="block text-xs text-neutral-400 mb-1">Sort</label>
@@ -618,6 +638,13 @@
             bind:selected={selectedMessages}
             emptyStr="No messages found."
             actions={[
+                { name: "View in Chat Context", icon: "forum", action: async (indices: number[]) => {
+                    if (indices.length === 1) {
+                        void viewMessageInContext(adminMessages[indices[0]]);
+                    } else {
+                        await alert("View in Context", "Please select exactly one message to view in context.");
+                    }
+                }},
                 { name: "Mark Deleted", icon: "delete", action: async (indices: number[], reset: Function) => {
                     indices.forEach(i => selectedMessages[i] = true);
                     await massDelete(false);
@@ -649,34 +676,27 @@
                 <th>Content</th>
                 <th>Time</th>
                 <th>Status</th>
-                <th class="w-24">Actions</th>
             {/snippet}
             {#snippet template(msg, i)}
                 <td class="px-2 text-sm whitespace-nowrap">
                     {msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : msg.author}
                 </td>
-                <td class="px-2 text-sm max-w-xs truncate">{msg.content}</td>
+                <td class="px-2 text-sm">{msg.content}</td>
                 <td class="px-2 text-xs text-neutral-400 whitespace-nowrap">{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : formatTimestamp(msg.id)}</td>
                 <td class="px-2 text-xs">
                     {#if msg.deleted}<span class="text-red-400">[deleted]</span>{/if}
                     {#if msg.edited}
-                        <span class="text-yellow-400 cursor-pointer" role="button" tabindex="0"
+                        <span class="text-yellow-400 cursor-pointer underline decoration-dotted" role="button" tabindex="0"
                             onclick={() => viewingEditHistory = msg}
                             onkeydown={(e) => { if (e.key === 'Enter') viewingEditHistory = msg; }}
-                            aria-label="View edit history">(edited)</span>
+                            title="Click to view edit history"
+                            aria-label="View edit history">(edited — click to view history)</span>
                     {/if}
                     {#if msg.attachments?.length > 0}
-                        <span class="text-blue-400">
+                        <span class="text-blue-400" title="{msg.attachments.length} attachment(s)">
                             <span class="material-symbols-outlined text-xs align-middle">attach_file</span>
                         </span>
                     {/if}
-                </td>
-                <td class="px-2">
-                    <div class="flex gap-1">
-                        <IconButton transparent onclick={() => void viewMessageInContext(msg)} aria-label="View in chat context">
-                            forum
-                        </IconButton>
-                    </div>
                 </td>
             {/snippet}
         </Table>
@@ -701,7 +721,7 @@
             onkeydown={(e) => { if (e.key === 'Escape') viewingEditHistory = null; }}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+            <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
                 role="document"
                 onclick={(e) => e.stopPropagation()}>
                 <div class="px-6 pt-5 pb-2">
@@ -752,7 +772,7 @@
         <!-- Chat List -->
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold">All Chats</h2>
-            <IconButton onclick={() => void loadChats()} aria-label="{adminChats.length > 0 ? 'Refresh chats' : 'Load chats'}">
+            <IconButton onclick={() => void loadChats()} aria-label={adminChats.length > 0 ? 'Refresh chats' : 'Load chats'}>
                 refresh
             </IconButton>
         </div>
@@ -830,13 +850,35 @@
                                 </strong>
                                 <span>{formatTimestamp(msg.id)}</span>
                                 {#if msg.edited}
-                                    <span class="text-yellow-400">(edited)</span>
+                                    <span class="text-yellow-400 cursor-pointer underline decoration-dotted" role="button" tabindex="0"
+                                        onclick={() => chatViewingEditHistory = msg}
+                                        onkeydown={(e) => { if (e.key === 'Enter') chatViewingEditHistory = msg; }}
+                                        title="Click to view edit history"
+                                        aria-label="View edit history">(edited — click to view history)</span>
                                 {/if}
                                 {#if msg.deleted}
                                     <span class="text-red-400">[deleted]</span>
                                 {/if}
                             </div>
                             <p class="text-sm pl-2 border-l-2 border-gray-600">{msg.content}</p>
+                            {#if msg.attachments?.length > 0}
+                                <p class="text-xs text-blue-400 pl-2 mt-1">
+                                    <span class="material-symbols-outlined text-xs align-middle">attach_file</span>
+                                    {msg.attachments.length} attachment(s)
+                                </p>
+                            {/if}
+                            {#if msg.reactions && Object.keys(msg.reactions).length > 0}
+                                <div class="flex flex-wrap gap-1 pl-2 mt-1">
+                                    {#each Object.entries(
+                                        Object.values(msg.reactions).reduce((acc, emoji) => {
+                                            acc[emoji] = (acc[emoji] || 0) + 1;
+                                            return acc;
+                                        }, {})
+                                    ) as [emoji, count]}
+                                        <span class="bg-gray-700 px-2 py-0.5 text-xs" title="{count} reaction(s)">{emoji} {count}</span>
+                                    {/each}
+                                </div>
+                            {/if}
                         </div>
                     {/each}
                 {/if}
@@ -844,4 +886,43 @@
         {/if}
     {/if}
 </div>
+
+<!-- Chat Edit History Modal -->
+{#if chatViewingEditHistory}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" role="dialog" aria-label="Edit history" tabindex="-1"
+        onclick={() => chatViewingEditHistory = null}
+        onkeydown={(e) => { if (e.key === 'Escape') chatViewingEditHistory = null; }}>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div class="bg-neutral-800 shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
+            role="document"
+            onclick={(e) => e.stopPropagation()}>
+            <div class="px-6 pt-5 pb-2">
+                <h2 class="text-2xl font-bold">Edit History</h2>
+            </div>
+            <div class="px-6 py-2 flex-1 overflow-y-auto">
+                <div class="mb-4">
+                    <p class="text-xs text-neutral-400 mb-1">Current version:</p>
+                    <div class="bg-gray-700 p-3 text-sm">{chatViewingEditHistory.content}</div>
+                </div>
+                {#if chatViewingEditHistory.editHistory && chatViewingEditHistory.editHistory.length > 0}
+                    {#each chatViewingEditHistory.editHistory.toReversed() as edit, i}
+                        <div class="mb-3">
+                            <p class="text-xs text-neutral-400 mb-1">
+                                Version {chatViewingEditHistory.editHistory.length - i} — {new Date(edit.editedAt).toLocaleString()}
+                            </p>
+                            <div class="bg-gray-700 p-3 text-sm">{edit.content}</div>
+                        </div>
+                    {/each}
+                {:else}
+                    <p class="text-neutral-400 text-sm">No edit history available.</p>
+                {/if}
+            </div>
+            <div class="px-6 pb-4 pt-2 flex justify-end">
+                <Button onclick={() => chatViewingEditHistory = null}>Close</Button>
+            </div>
+        </div>
+    </div>
+{/if}
 {/snippet}

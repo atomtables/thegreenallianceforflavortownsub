@@ -79,18 +79,20 @@
         <div class="flex flex-row px-1 space-x-2">
             {#each actions as {name, icon, action}}
                 <Button disableLoading transparent class="[&]:p-1"
-                        onclick={async () => await action(numbersActive(), removeAll)}>
+                        onclick={async () => await action(numbersActive(), removeAll)}
+                        title={name}>
                     <span class="material-symbols-outlined">{icon}</span>
                 </Button>
             {/each}
         </div>
     </div>
 {:else if defaultActions.length > 0}
-    <div class="bg-green-900 py-2 px-1 flex flex-row items-center justify-end" transition:slide>
+    <div class="bg-green-800 py-2 px-1 flex flex-row items-center justify-end" transition:slide>
         <div class="flex flex-row px-1 space-x-2">
             {#each defaultActions as {name, icon, action}}
                 <Button disableLoading transparent class="[&]:p-1"
-                        onclick={async () => await action()}>
+                        onclick={async () => await action()}
+                        title={name}>
                     <span class="material-symbols-outlined">{icon}</span>
                 </Button>
             {/each}
