@@ -920,7 +920,7 @@
                     {#each chatMessages as msg}
                         <div class="mb-3 flex gap-2 {msg.deleted ? 'opacity-50' : ''} {chatSelectedMessages.has(msg.id) ? 'bg-green-900/30' : ''}">
                             <div class="pt-1 shrink-0">
-                                <Input type="checkbox" name="" value={chatSelectedMessages.has(msg.id)}
+                                <Input type="checkbox" name="Select message" value={chatSelectedMessages.has(msg.id)}
                                     action={() => toggleChatMsgSelect(msg.id)} />
                             </div>
                             <div class="flex-1 min-w-0">
