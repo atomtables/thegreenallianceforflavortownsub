@@ -4,6 +4,7 @@ import "$lib/prototypes/prototypes";
 import { Role } from '$lib/types/types';
 import { canUserAccess } from './sitemap';
 import { redirect } from '@sveltejs/kit';
+import { db } from '$lib/server/db';
 
 const handleAuth: Handle = async ({ event, resolve }) => {
 	const isApi = event.url.pathname.startsWith('/api');
@@ -21,9 +22,9 @@ const handleAuth: Handle = async ({ event, resolve }) => {
 	const { session, user } = await auth.validateSessionToken(sessionToken);
 
 	if (session) {
-		auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
+		auth.setSessionTokenCookie(event as any, sessionToken, session.expiresAt);
 	} else {
-		auth.deleteSessionTokenCookie(event);
+		auth.deleteSessionTokenCookie(event as any);
 	}
 
 	event.locals.user = user;
