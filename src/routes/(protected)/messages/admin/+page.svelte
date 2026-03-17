@@ -391,7 +391,7 @@
                     <option value="resolved">Resolved</option>
                     <option value="dismissed">Dismissed</option>
                 </select>
-                <IconButton onclick={() => void loadReports()} aria-label="Refresh reports">refresh</IconButton>
+                <IconButton onclick={() => void loadReports()}>refresh</IconButton>
             </div>
         </div>
 
@@ -466,7 +466,10 @@
         <h2 class="text-xl font-bold mb-4">Bad Words Filter</h2>
         <div class="bg-gray-800 shadow-md p-4">
             <div class="flex items-center gap-4 mb-4">
-                <Input type="checkbox" name="Enable filter" bind:value={badWordsConfig.enabled} />
+                <div class="flex flex-row justify-center items-center gap-2">
+                    <Input type="checkbox" class='w-min' bind:value={badWordsConfig.enabled} />
+                    <div>Enable filter</div>
+                </div>
                 <p class="text-sm text-neutral-400">When enabled, messages containing flagged words will be blocked.</p>
             </div>
 
@@ -602,8 +605,14 @@
                     class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
             </div>
             <div class="flex items-end gap-4">
-                <Input type="checkbox" name="Has Attachment" bind:value={filterHasAttachment} />
-                <Input type="checkbox" name="Show Deleted" bind:value={filterShowDeleted} />
+                <div class="flex flex-row justify-center items-center gap-2">
+                    <Input type="checkbox" class="w-min" bind:value={filterHasAttachment}  />
+                    <div>Has attachment</div>
+                </div>
+                <div class="flex flex-row justify-center items-center gap-2">
+                    <Input type="checkbox" class="w-min" bind:value={filterShowDeleted} />
+                    <div>Show Deleted</div>
+                </div>
             </div>
             <div>
                 <label for="filter-sort" class="block text-xs text-neutral-400 mb-1">Sort</label>
@@ -703,11 +712,11 @@
 
         <!-- Pagination -->
         <div class="flex justify-center items-center gap-2 mt-4">
-            <IconButton disabled={messagesPage <= 1} onclick={() => { messagesPage--; void loadMessages(); }} aria-label="Previous page">
+            <IconButton disabled={messagesPage <= 1} onclick={() => { messagesPage--; void loadMessages(); }}>
                 chevron_left
             </IconButton>
             <span class="text-sm text-neutral-400">Page {messagesPage}</span>
-            <IconButton disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; void loadMessages(); }} aria-label="Next page">
+            <IconButton disabled={adminMessages.length < messagesLimit} onclick={() => { messagesPage++; void loadMessages(); }}>
                 chevron_right
             </IconButton>
         </div>
@@ -772,7 +781,7 @@
         <!-- Chat List -->
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold">All Chats</h2>
-            <IconButton onclick={() => void loadChats()} aria-label={adminChats.length > 0 ? 'Refresh chats' : 'Load chats'}>
+            <IconButton onclick={() => void loadChats()}>
                 refresh
             </IconButton>
         </div>
@@ -870,7 +879,7 @@
                             {#if msg.reactions && Object.keys(msg.reactions).length > 0}
                                 <div class="flex flex-wrap gap-1 pl-2 mt-1">
                                     {#each Object.entries(
-                                        Object.values(msg.reactions).reduce((acc, emoji) => {
+                                        Object.values(msg.reactions).reduce((acc, emoji: any) => {
                                             acc[emoji] = (acc[emoji] || 0) + 1;
                                             return acc;
                                         }, {})
