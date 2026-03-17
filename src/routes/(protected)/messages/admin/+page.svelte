@@ -39,12 +39,15 @@
     // ==================== CONDUCT ISSUES ====================
     let reports: any[] = $state([]);
     let reportsLoading = $state(false);
-    let reportStatusFilter = $state("open");
+    const reportStatusOptions = ["All", "Open", "Reviewed", "Resolved", "Dismissed"];
+    const reportStatusValues = ["all", "open", "reviewed", "resolved", "dismissed"];
+    let reportStatusIdx = $state(1); // default "open"
 
     const loadReports = async () => {
         reportsLoading = true;
         const params = new URLSearchParams();
-        if (reportStatusFilter !== "all") params.set("status", reportStatusFilter);
+        const status = reportStatusValues[reportStatusIdx] || "all";
+        if (status !== "all") params.set("status", status);
         const res = await fetch(`/api/messages/admin/reports?${params}`);
         if (res.ok) {
             const data = await res.json();
@@ -148,14 +151,18 @@
     let messagesLimit = $state(50);
 
     // Filters
-    let filterAuthor = $state("");
+    const authorOptions = ["All Users", ...users.map(u => `${toTitleCase(`${u.firstName} ${u.lastName}`)} (@${u.username})`)];
+    const authorValues = ["", ...users.map(u => u.id)];
+    let filterAuthorIdx = $state(0);
     let filterChatId = $state("");
     let filterKeyword = $state("");
     let filterHasAttachment = $state(false);
     let filterShowDeleted = $state(false);
     let filterDateFrom = $state("");
     let filterDateTo = $state("");
-    let filterSort = $state("desc");
+    const sortOptions = ["Newest First", "Oldest First"];
+    const sortValues = ["desc", "asc"];
+    let filterSortIdx = $state(0);
     let selectedMessages = $state<boolean[]>([]);
 
     const loadMessages = async () => {
@@ -163,7 +170,8 @@
         const params = new URLSearchParams();
         params.set("page", messagesPage.toString());
         params.set("limit", messagesLimit.toString());
-        params.set("sort", filterSort);
+        params.set("sort", sortValues[filterSortIdx] || "desc");
+        const filterAuthor = authorValues[filterAuthorIdx] || "";
         if (filterAuthor) params.set("author", filterAuthor);
         if (filterChatId) params.set("chatId", filterChatId);
         if (filterKeyword) params.set("keyword", filterKeyword);
@@ -183,14 +191,14 @@
     };
 
     const clearFilters = () => {
-        filterAuthor = "";
+        filterAuthorIdx = 0;
         filterChatId = "";
         filterKeyword = "";
         filterHasAttachment = false;
         filterShowDeleted = false;
         filterDateFrom = "";
         filterDateTo = "";
-        filterSort = "desc";
+        filterSortIdx = 0;
         messagesPage = 1;
     };
 
@@ -261,6 +269,7 @@
     let chatHasMore = $state(false);
     let chatLoadingMore = $state(false);
     let chatViewingEditHistory: any = $state(null);
+    let chatSelectedMessages = $state<Set<string>>(new Set());
 
     const loadChats = async () => {
         chatsLoading = true;
@@ -277,6 +286,7 @@
         selectedChatId = chatId;
         chatMessagesPage = 1;
         chatMessages = [];
+        chatSelectedMessages = new Set();
         chatMessagesLoading = true;
         const res = await fetch(`/api/messages/admin/chats?chatId=${chatId}&page=1&limit=50`);
         if (res.ok) {
@@ -304,6 +314,75 @@
         const target = e.target as HTMLElement;
         if (target.scrollTop < 100 && chatHasMore && !chatLoadingMore) {
             void loadMoreChatMessages();
+        }
+    };
+
+    const toggleChatMsgSelect = (msgId: string) => {
+        const next = new Set(chatSelectedMessages);
+        if (next.has(msgId)) next.delete(msgId);
+        else next.add(msgId);
+        chatSelectedMessages = next;
+    };
+
+    const clearChatSelection = () => {
+        chatSelectedMessages = new Set();
+    };
+
+    const chatDeleteSelected = async (permanent: boolean) => {
+        const ids = Array.from(chatSelectedMessages);
+        if (ids.length === 0) return;
+        const ok = await confirm("Delete Messages", `Are you sure you want to ${permanent ? "permanently delete" : "soft-delete"} ${ids.length} message(s)?`);
+        if (!ok) return;
+        const res = await fetch("/api/messages/admin", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageIds: ids, permanent }),
+        });
+        if (res.ok) {
+            showToast(`${ids.length} message(s) ${permanent ? "permanently deleted" : "marked as deleted"}`, { icon: "check" });
+            chatSelectedMessages = new Set();
+            if (selectedChatId) await selectChat(selectedChatId);
+        }
+    };
+
+    const chatReportSelected = async () => {
+        const ids = Array.from(chatSelectedMessages);
+        if (ids.length === 0) return;
+        const reason = await prompt("Report Messages", `Enter a reason for reporting ${ids.length} message(s):`, { promptValue: "Reason" });
+        if (reason === null) return;
+        let count = 0;
+        for (const id of ids) {
+            const res = await fetch("/api/messages/admin/reports", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId: id, reason }),
+            });
+            if (res.ok) count++;
+        }
+        showToast(`${count} report(s) created`, { icon: "check" });
+        chatSelectedMessages = new Set();
+    };
+
+    const chatExportMessages = (format: string) => {
+        const ids = chatSelectedMessages;
+        const toExport = ids.size > 0 ? chatMessages.filter(m => ids.has(m.id)) : chatMessages;
+
+        if (format === "json") {
+            const blob = new Blob([JSON.stringify(toExport, null, 2)], { type: "application/json" });
+            downloadBlob(blob, `chat-${selectedChatId}-messages.json`);
+        } else if (format === "csv") {
+            const header = "ID,Author,Content,Timestamp,Edited,Deleted\n";
+            const rows = toExport.map((m: any) =>
+                `"${m.id}","${m.authorUser?.username || m.author}","${(m.content || '').replace(/"/g, '""')}","${formatTimestamp(m.id)}","${m.edited}","${m.deleted}"`
+            ).join("\n");
+            const blob = new Blob([header + rows], { type: "text/csv" });
+            downloadBlob(blob, `chat-${selectedChatId}-messages.csv`);
+        } else if (format === "txt") {
+            const text = toExport.map((m: any) =>
+                `[${formatTimestamp(m.id)}] ${m.authorUser ? toTitleCase(`${m.authorUser.firstName} ${m.authorUser.lastName}`) : m.author}: ${m.content}`
+            ).join("\n");
+            const blob = new Blob([text], { type: "text/plain" });
+            downloadBlob(blob, `chat-${selectedChatId}-messages.txt`);
         }
     };
 
@@ -382,16 +461,11 @@
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold">Reports</h2>
             <div class="flex items-center gap-2">
-                <label for="report-status-filter" class="text-sm">Filter:</label>
-                <select id="report-status-filter" bind:value={reportStatusFilter} onchange={loadReports}
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 text-sm">
-                    <option value="all">All</option>
-                    <option value="open">Open</option>
-                    <option value="reviewed">Reviewed</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="dismissed">Dismissed</option>
-                </select>
-                <IconButton onclick={() => void loadReports()}>refresh</IconButton>
+                <Input type="dropdown" name="Filter"
+                    elements={reportStatusOptions}
+                    bind:value={reportStatusIdx}
+                    action={loadReports} />
+                <IconButton onclick={() => void loadReports()} title="Refresh reports">refresh</IconButton>
             </div>
         </div>
 
@@ -479,10 +553,9 @@
             </p>
 
             <div class="flex gap-2 mb-4">
-                <input type="text" bind:value={newBadWord} placeholder="Add a word or regex pattern..."
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 flex-1 text-sm"
-                    aria-label="New bad word"
-                    onkeydown={(e) => { if (e.key === 'Enter') addBadWord(); }} />
+                <Input type="text" bind:value={newBadWord} name="Add a word or regex pattern"
+                    onkeydown={(e) => { if (e.key === 'Enter') addBadWord(); }}
+                    class="flex-1" />
                 <Button onclick={addBadWord}>Add</Button>
             </div>
 
@@ -491,10 +564,9 @@
                     {#each badWordsConfig.words as word}
                         <span class="bg-gray-700 px-3 py-1 text-sm flex items-center gap-1">
                             {word}
-                            <button onclick={() => removeBadWord(word)} class="text-red-400 hover:text-red-300 ml-1"
-                                aria-label="Remove word {word}">
-                                <span class="material-symbols-outlined text-sm">close</span>
-                            </button>
+                            <IconButton onclick={() => removeBadWord(word)} class="[&]:p-0.5 text-red-400 hover:text-red-300" title="Remove word {word}">
+                                close
+                            </IconButton>
                         </span>
                     {/each}
                 </div>
@@ -572,38 +644,15 @@
     <div class="bg-gray-800 shadow-md p-4 mb-6">
         <h2 class="text-lg font-bold mb-3">Filters</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-            <div>
-                <label for="filter-author" class="block text-xs text-neutral-400 mb-1">Author</label>
-                <select id="filter-author" bind:value={filterAuthor}
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm">
-                    <option value="">All Users</option>
-                    {#each users as user}
-                        <option value={user.id}>{toTitleCase(`${user.firstName} ${user.lastName}`)} (@{user.username})</option>
-                    {/each}
-                </select>
-            </div>
-            <div>
-                <label for="filter-keyword" class="block text-xs text-neutral-400 mb-1">Keyword Search</label>
-                <input id="filter-keyword" type="text" bind:value={filterKeyword} placeholder="Search messages..."
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
-            </div>
-            <div>
-                <label for="filter-chatid" class="block text-xs text-neutral-400 mb-1">Chat ID</label>
-                <input id="filter-chatid" type="text" bind:value={filterChatId} placeholder="Filter by chat ID..."
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
-            </div>
+            <Input type="dropdown" name="Author"
+                elements={authorOptions}
+                bind:value={filterAuthorIdx} />
+            <Input name="Keyword Search" bind:value={filterKeyword} />
+            <Input name="Chat ID" bind:value={filterChatId} />
         </div>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-            <div>
-                <label for="filter-datefrom" class="block text-xs text-neutral-400 mb-1">Date From</label>
-                <input id="filter-datefrom" type="date" bind:value={filterDateFrom}
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
-            </div>
-            <div>
-                <label for="filter-dateto" class="block text-xs text-neutral-400 mb-1">Date To</label>
-                <input id="filter-dateto" type="date" bind:value={filterDateTo}
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm" />
-            </div>
+            <Input type="date" name="Date From" bind:value={filterDateFrom} />
+            <Input type="date" name="Date To" bind:value={filterDateTo} />
             <div class="flex items-end gap-4">
                 <div class="flex flex-row justify-center items-center gap-2">
                     <Input type="checkbox" class="w-min" bind:value={filterHasAttachment}  />
@@ -614,14 +663,9 @@
                     <div>Show Deleted</div>
                 </div>
             </div>
-            <div>
-                <label for="filter-sort" class="block text-xs text-neutral-400 mb-1">Sort</label>
-                <select id="filter-sort" bind:value={filterSort}
-                    class="bg-gray-700 border border-gray-600 px-3 py-1.5 w-full text-sm">
-                    <option value="desc">Newest First</option>
-                    <option value="asc">Oldest First</option>
-                </select>
-            </div>
+            <Input type="dropdown" name="Sort"
+                elements={sortOptions}
+                bind:value={filterSortIdx} />
         </div>
         <div class="flex gap-2">
             <Button onclick={() => void loadMessages()}>
@@ -796,7 +840,6 @@
                     <button
                         class="w-full text-left bg-gray-800 shadow-md p-4 hover:bg-gray-700 transition-colors"
                         onclick={() => void selectChat(chat.id)}
-                        aria-label="Open chat {getChatDisplayName(chat)}"
                     >
                         <div class="flex items-center justify-between">
                             <div>
@@ -828,13 +871,45 @@
             </div>
         {/if}
     {:else}
-        <!-- Chat View (read-only) -->
-        <div class="mb-4">
-            <Button onclick={() => { selectedChatId = null; chatMessages = []; }}>
+        <!-- Chat View -->
+        <div class="flex items-center justify-between mb-4">
+            <Button onclick={() => { selectedChatId = null; chatMessages = []; chatSelectedMessages = new Set(); }}>
                 <span class="material-symbols-outlined text-sm">arrow_back</span>
                 Back to Chat List
             </Button>
+            <div class="flex items-center gap-1">
+                <IconButton onclick={() => chatExportMessages('json')} title="Export as JSON">download</IconButton>
+                <IconButton onclick={() => chatExportMessages('csv')} title="Export as CSV">table_chart</IconButton>
+                <IconButton onclick={() => chatExportMessages('txt')} title="Export as Plaintext">description</IconButton>
+                <IconButton onclick={() => { if (selectedChatId) void selectChat(selectedChatId); }} title="Refresh messages">refresh</IconButton>
+            </div>
         </div>
+
+        <!-- Selection toolbar -->
+        {#if chatSelectedMessages.size > 0}
+            <div class="bg-green-400 text-gray-800 py-2 px-3 flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <Button transparent class="[&]:p-1" onclick={clearChatSelection}>
+                        <span class="material-symbols-outlined">close</span>
+                    </Button>
+                    <span class="font-bold">{chatSelectedMessages.size} SELECTED</span>
+                </div>
+                <div class="flex gap-1">
+                    <Button disableLoading transparent class="[&]:p-1" onclick={() => void chatDeleteSelected(false)} title="Soft delete selected messages">
+                        <span class="material-symbols-outlined">delete</span>
+                    </Button>
+                    <Button disableLoading transparent class="[&]:p-1" onclick={() => void chatDeleteSelected(true)} title="Permanently delete selected messages">
+                        <span class="material-symbols-outlined">delete_forever</span>
+                    </Button>
+                    <Button disableLoading transparent class="[&]:p-1" onclick={() => void chatReportSelected()} title="Report selected messages">
+                        <span class="material-symbols-outlined">flag</span>
+                    </Button>
+                    <Button disableLoading transparent class="[&]:p-1" onclick={() => chatExportMessages('json')} title="Export selected as JSON">
+                        <span class="material-symbols-outlined">download</span>
+                    </Button>
+                </div>
+            </div>
+        {/if}
 
         {#if chatMessagesLoading}
             <p class="text-neutral-400">Loading messages...</p>
@@ -852,42 +927,47 @@
                     <p class="text-neutral-400 text-center">No messages in this chat.</p>
                 {:else}
                     {#each chatMessages as msg}
-                        <div class="mb-3 {msg.deleted ? 'opacity-50' : ''}">
-                            <div class="flex items-center gap-2 text-xs text-neutral-400 mb-0.5">
-                                <strong class="text-neutral-200">
-                                    {msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : getUserName(msg.author)}
-                                </strong>
-                                <span>{formatTimestamp(msg.id)}</span>
-                                {#if msg.edited}
-                                    <span class="text-yellow-400 cursor-pointer underline decoration-dotted" role="button" tabindex="0"
-                                        onclick={() => chatViewingEditHistory = msg}
-                                        onkeydown={(e) => { if (e.key === 'Enter') chatViewingEditHistory = msg; }}
-                                        title="Click to view edit history"
-                                        aria-label="View edit history">(edited — click to view history)</span>
+                        <div class="mb-3 flex gap-2 {msg.deleted ? 'opacity-50' : ''} {chatSelectedMessages.has(msg.id) ? 'bg-green-900/30' : ''}">
+                            <div class="pt-1 shrink-0">
+                                <Input type="checkbox" name="Select message" value={chatSelectedMessages.has(msg.id)}
+                                    action={() => toggleChatMsgSelect(msg.id)} />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 text-xs text-neutral-400 mb-0.5">
+                                    <strong class="text-neutral-200">
+                                        {msg.authorUser ? toTitleCase(`${msg.authorUser.firstName} ${msg.authorUser.lastName}`) : getUserName(msg.author)}
+                                    </strong>
+                                    <span>{formatTimestamp(msg.id)}</span>
+                                    {#if msg.edited}
+                                        <span class="text-yellow-400 cursor-pointer underline decoration-dotted" role="button" tabindex="0"
+                                            onclick={() => chatViewingEditHistory = msg}
+                                            onkeydown={(e) => { if (e.key === 'Enter') chatViewingEditHistory = msg; }}
+                                            title="Click to view edit history">(edited — click to view history)</span>
+                                    {/if}
+                                    {#if msg.deleted}
+                                        <span class="text-red-400">[deleted]</span>
+                                    {/if}
+                                </div>
+                                <p class="text-sm pl-2 border-l-2 border-gray-600">{msg.content}</p>
+                                {#if msg.attachments?.length > 0}
+                                    <p class="text-xs text-blue-400 pl-2 mt-1">
+                                        <span class="material-symbols-outlined text-xs align-middle">attach_file</span>
+                                        {msg.attachments.length} attachment(s)
+                                    </p>
                                 {/if}
-                                {#if msg.deleted}
-                                    <span class="text-red-400">[deleted]</span>
+                                {#if msg.reactions && Object.keys(msg.reactions).length > 0}
+                                    <div class="flex flex-wrap gap-1 pl-2 mt-1">
+                                        {#each Object.entries(
+                                            Object.values(msg.reactions).reduce((acc, emoji: any) => {
+                                                acc[emoji] = (acc[emoji] || 0) + 1;
+                                                return acc;
+                                            }, {})
+                                        ) as [emoji, count]}
+                                            <span class="bg-gray-700 px-2 py-0.5 text-xs" title="{count} reaction(s)">{emoji} {count}</span>
+                                        {/each}
+                                    </div>
                                 {/if}
                             </div>
-                            <p class="text-sm pl-2 border-l-2 border-gray-600">{msg.content}</p>
-                            {#if msg.attachments?.length > 0}
-                                <p class="text-xs text-blue-400 pl-2 mt-1">
-                                    <span class="material-symbols-outlined text-xs align-middle">attach_file</span>
-                                    {msg.attachments.length} attachment(s)
-                                </p>
-                            {/if}
-                            {#if msg.reactions && Object.keys(msg.reactions).length > 0}
-                                <div class="flex flex-wrap gap-1 pl-2 mt-1">
-                                    {#each Object.entries(
-                                        Object.values(msg.reactions).reduce((acc, emoji: any) => {
-                                            acc[emoji] = (acc[emoji] || 0) + 1;
-                                            return acc;
-                                        }, {})
-                                    ) as [emoji, count]}
-                                        <span class="bg-gray-700 px-2 py-0.5 text-xs" title="{count} reaction(s)">{emoji} {count}</span>
-                                    {/each}
-                                </div>
-                            {/if}
                         </div>
                     {/each}
                 {/if}
