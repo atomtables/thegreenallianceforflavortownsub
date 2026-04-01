@@ -15,6 +15,7 @@ export const routeRules: RouteRule[] = [
 
     { path: "/home", auth: true, permissions: [Permission.exist] },
     { path: "/account/logout", auth: true, permissions: [Permission.exist] },
+    { path: "/tos", auth: true, permissions: [Permission.exist] },
     { path: "/meetings/calendar", auth: true, permissions: [Permission.exist, Permission.calendar] },
     { path: "/users", auth: true, permissions: [Permission.exist, Permission.users] },
     { path: "/messages/chat", auth: true, permissions: [Permission.exist, Permission.message] },

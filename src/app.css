@@ -20,3 +20,22 @@ html {
 .text-subheader {
     @apply text-gray-200 text-sm font-bold uppercase;
 }
+
+tos {
+    display: block;
+}
+
+tos > h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+tos > h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+tos > h3 {
+    font-size: 1.25rem;
+    font-weight: 500;
+}

@@ -8,4 +8,3 @@ export const load = async ({ locals }) => {
         subteams: await db.select().from(schema.subteams),
     };
 }
-

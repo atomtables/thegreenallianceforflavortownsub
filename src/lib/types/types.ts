@@ -71,4 +71,5 @@ export type User = {
     role: Role,
     permissions: Permission[],
     subteam: string,
+    tosAgreedAt: number | null,
 }

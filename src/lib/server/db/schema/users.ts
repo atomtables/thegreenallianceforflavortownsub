@@ -25,6 +25,7 @@ export const users = pgTable('users', {
     role: integer('role').$type<Role>().notNull(),
     permissions: json<Permission[]>('permissions').notNull().default(sql`'[]'::jsonb`),
     subteam: text('subteam').notNull().references(() => subteams.name).default('All'),
+    tosAgreedAt: timestamp('tos_agreed_at', { mode: 'date' }),
 }, (table) => [
     uniqueIndex('emailUniqueIndex').on(table.email),
 ]);
