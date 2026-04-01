@@ -564,7 +564,7 @@
                     {#each badWordsConfig.words as word}
                         <span class="bg-gray-700 px-3 py-1 text-sm flex items-center gap-1">
                             {word}
-                            <IconButton onclick={() => removeBadWord(word)} class="[&]:p-0.5 text-red-400 hover:text-red-300" title="Remove word {word}">
+                            <IconButton onclick={() => removeBadWord(word)} transparent class="p-0.5! text-red-400 hover:text-red-300" title="Remove word {word}">
                                 close
                             </IconButton>
                         </span>
@@ -929,7 +929,7 @@
                     {#each chatMessages as msg}
                         <div class="mb-3 flex gap-2 {msg.deleted ? 'opacity-50' : ''} {chatSelectedMessages.has(msg.id) ? 'bg-green-900/30' : ''}">
                             <div class="pt-1 shrink-0">
-                                <Input type="checkbox" name="Select message" value={chatSelectedMessages.has(msg.id)}
+                                <Input type="checkbox" value={chatSelectedMessages.has(msg.id)}
                                     action={() => toggleChatMsgSelect(msg.id)} />
                             </div>
                             <div class="flex-1 min-w-0">
