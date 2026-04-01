@@ -19,3 +19,11 @@ change code.mjs to change the default username (which is **atomtables** with pas
 - dont worry about all that for now tho because thats all frontend stuff
 - you work on the backend ill work on the frontend and when we commit hopefully we dont have merge conflicts
 - pray that the git doesnt get reset 😭🙏
+
+## if youre here for flavortown:
+this is the portion of the repo i worked on, so its only the messaging features that ive worked on for the most part.
+the messaging is supposed to centralise the sources where people have to communicate. it can also mean that team members without advanced smartphone features or limited data can get other forms of text like sms or email to receive and respond to messages. 
+
+demo video
+https://github.com/user-attachments/assets/942d3f93-deb0-42dc-afa9-d89df8842288
+
